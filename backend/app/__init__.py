@@ -1,0 +1,1 @@
+"""KeyRhythm backend application."""

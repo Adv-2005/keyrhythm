@@ -1,60 +1,78 @@
 # KeyRhythm
 
-KeyRhythm is a planned local research application for continuous user verification from keystroke timing. The product requirements are in [plan.md](plan.md). This repository is currently at **Milestone 0**: it contains planning and dependency declarations, but no runnable application or tests yet.
+KeyRhythm is a local research application for studying continuous user verification from keystroke timing. The [product requirements](plan.md) and [implementation plan](docs/implementation-plan.md) define the milestone scope.
 
-## Requirements and setup
+**Current status: Milestone 1.** The React dashboard shell and FastAPI health endpoint run locally. Navigation shows the areas planned for later milestones. No typing data is collected and no authentication or model result is available yet.
 
-- Python 3.11 (the version available in the inspected workspace).
-- Node.js 24 (available in the inspected workspace; use a Node version supported by the chosen Vite release).
-- npm and Git.
+## Requirements
+
+- Python 3.11 (tested with 3.11.9 on Windows).
+- Node.js 24 (tested with 24.12.0) and npm.
+- Git.
+
+## Install
 
 From the repository root in PowerShell:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements-ml.txt
-Copy-Item backend\.env.example backend\.env
-Copy-Item frontend\.env.example frontend\.env
-npm.cmd --prefix frontend install
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.lock
+npm.cmd --prefix frontend ci
 ```
 
-The two `pip install` commands separate the API/test tools from the larger machine-learning stack. For a lighter environment during Milestone 1, omit the `requirements-ml.txt` command. `npm.cmd` avoids a PowerShell execution-policy error seen with `npm` on this machine. These commands prepare dependencies; `npm run dev`, an API server, and tests will become available in Milestone 1. Do not use the application for actual participant data collection until consent, validation, and deletion flows are implemented in Milestone 2.
+The lockfiles capture the tested Milestone 1 dependency set. `backend/requirements.txt` and `backend/requirements-dev.txt` contain broader ranges for future updates. The larger ML packages in `backend/requirements-ml.txt` are for later milestones and are not needed to run the foundation. In PowerShell on this machine, `npm.cmd` works where the `npm.ps1` shim is blocked by execution policy.
 
-Dependency ranges are declared now. The first successful frontend install should commit `frontend/package-lock.json`; the Python environment should be locked to tested versions during Milestone 1. Until then, these installs are repeatable commands but are not bit-for-bit reproducible over time.
+## Run locally
 
-Milestone 0 checks (from the repository root):
+Start the backend in one PowerShell terminal from the repository root:
 
 ```powershell
-python --version
-node --version
-npm.cmd --version
-python -c "import json; json.load(open('frontend/package.json', encoding='utf-8')); print('package.json valid')"
-git status --short
-git check-ignore -v --no-index backend/.env frontend/.env backend/data/keyrhythm.sqlite3
+Set-Location backend
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Package installation needs access to the relevant registries. The Milestone 0 npm lockfile resolution attempt could not complete in the inspected environment; no lockfile or installed dependencies are claimed here.
+Start the frontend in another terminal from the repository root:
 
-## Layout
+```powershell
+npm.cmd --prefix frontend run dev
+```
+
+Open `http://127.0.0.1:5173`. The status badge requests `/api/v1/health` through Vite's local proxy, which forwards to FastAPI at `http://127.0.0.1:8000`. `frontend/.env.example` documents the default browser API path; copying it to `.env` is optional. The backend database setting in `backend/.env.example` is reserved for Milestone 2 and is not read by the foundation.
+
+To check both servers:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
+Invoke-RestMethod http://127.0.0.1:5173/api/v1/health
+```
+
+Both commands should return `status: ok`, and the dashboard should display `API connected`.
+
+## Tests and build
+
+From the repository root:
+
+```powershell
+npm.cmd --prefix frontend run build
+npm.cmd --prefix frontend test
+Push-Location backend
+..\.venv\Scripts\python.exe -m pytest -q
+..\.venv\Scripts\python.exe -m ruff check app tests
+Pop-Location
+```
+
+The frontend build includes TypeScript checking. Tests cover the health endpoint, frontend connectivity states, and dashboard navigation.
+
+## Layout and data policy
 
 ```text
-plan.md                  Product requirements (source of truth)
-docs/implementation-plan.md  Milestones, dependencies, decisions, risks
-frontend/package.json    Planned React/Vite dependencies
-frontend/src/            Future UI and scoped typing capture
-frontend/.env.example    Future browser API base URL
-backend/requirements*.txt Planned API, ML, and test dependencies
-backend/app/             Future FastAPI routes, persistence, and ML modules
-backend/tests/           Future backend tests
-backend/.env.example     Future local database URL
+frontend/src/                 Dashboard shell and API client
+frontend/vite.config.ts       React, Tailwind, tests, and local API proxy
+frontend/package-lock.json    Tested npm dependency graph
+backend/app/main.py           FastAPI app and versioned health route
+backend/tests/                Backend tests
+backend/requirements-dev.lock Tested Python API/test dependencies
+docs/implementation-plan.md   Milestone gates and research risks
 ```
 
-The directories under `src/`, `app/`, and `tests/` are empty placeholders. Configuration examples are not yet consumed by code. Milestone 1 will provide startup commands and working tests.
-
-## Local data policy
-
-The planned browser collector will observe timing only in the designated challenge field. It must discard key values and raw keyboard events before sending a sample. Timing sequences are behavioural biometric data: collect with consent, keep them local by default, and make profile deletion remove associated records. The `.gitignore` excludes local databases, generated artifacts, and environment files. It cannot prevent an intentional `git add -f` or protect data already committed.
-
-See [the implementation plan](docs/implementation-plan.md) for the milestone gates and unresolved protocol decisions.
+The initial version is an academic prototype, not an identity-security product. Future timing capture must stay within the designated challenge field, require participant consent, and avoid sending or storing typed text or raw keyboard events. Local databases, generated model artifacts, and environment files are excluded by `.gitignore`.
