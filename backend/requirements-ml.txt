@@ -1,4 +1,4 @@
-# Install alongside requirements-dev.txt when working on Milestones 3-5.
+# Install alongside requirements-dev.txt for neural and full evaluation work in Milestones 4-5.
 numpy>=2,<3
 pandas>=2.2,<3
 scikit-learn>=1.5,<2

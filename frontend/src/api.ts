@@ -47,3 +47,50 @@ export const submitSample = (id: number, session_id: string, timing_sequence: Ti
     method: 'POST',
     body: JSON.stringify({ consent_acknowledged: true, session_id, challenge_version: CHALLENGE_VERSION, feature_version: FEATURE_VERSION, timing_sequence }),
   })
+
+export type Calibration = {
+  false_acceptance_rate: number
+  false_rejection_rate: number
+  genuine_count: number
+  impostor_count: number
+  session_disjoint: boolean
+}
+
+export type ModelStatus = {
+  model_version: string
+  minimum_samples_per_profile: number
+  minimum_profiles: number
+  eligible_profile_count: number
+  profiles: {
+    profile_id: number
+    sample_count: number
+    status: 'needs_data' | 'needs_training' | 'stale' | 'ready'
+    training_count: number | null
+    validation_count: number | null
+    calibration: Calibration | null
+  }[]
+}
+
+export type AuthenticationResult = {
+  profile_id: number
+  similarity_score: number
+  decision_threshold: number
+  distance: number
+  accepted: boolean
+  model_version: string
+  feature_matrix_version: string
+  calibration: Calibration
+  explanation: string
+}
+
+export const getModelStatus = (signal?: AbortSignal) => apiRequest<ModelStatus>('/models/status', { signal })
+export const trainBaseline = () => apiRequest<unknown>('/models/train', { method: 'POST' })
+export const authenticate = (profile_id: number, session_id: string, timing_sequence: TimingSequence) =>
+  apiRequest<AuthenticationResult>('/authenticate', {
+    method: 'POST',
+    body: JSON.stringify({
+      profile_id,
+      sample: { consent_acknowledged: true, session_id, challenge_version: CHALLENGE_VERSION,
+        feature_version: FEATURE_VERSION, timing_sequence },
+    }),
+  })

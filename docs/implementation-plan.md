@@ -22,6 +22,8 @@ The working structure is one React frontend and one FastAPI backend. In the back
 
 The baseline and Siamese models must use identical test recordings and a documented score direction. Separate known-user verification from evaluation on unseen participants; they answer different questions. Authentication scores are similarities or distances, not calibrated probabilities.
 
+Milestone 3 implements a standard-library distance baseline with versioned 44 × 3 features and validation-only threshold calibration. Artifacts and training/validation sample IDs are stored in SQLite. A dataset fingerprint invalidates artifacts when collection changes. The current FAR and FRR are calibration diagnostics on validation recordings; final held-out evaluation belongs to Milestone 5. The baseline accepts a minimal two-profile, six-sample-per-profile dataset for a functional demo, with session-disjoint validation when feasible. This minimum does not establish population-level accuracy.
+
 ## Decisions required before data collection and evaluation
 
 1. **Timing schema:** `fixed-1` and `timing-1` use monotonic browser event timestamps in milliseconds, with holds aligned to 44 challenge positions and intervals aligned to adjacent positions. The browser rejects auto-repeat, composition/IME, paste, focus loss during typing, corrections, and missing key-up events. Browser and keyboard timing variation still needs a participant/device study. No global keyboard listener.

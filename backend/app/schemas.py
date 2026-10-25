@@ -119,3 +119,58 @@ class SamplesResponse(StrictModel):
     profile_id: int
     sample_count: int
     samples: list[SampleMetadata]
+
+
+class CalibrationResponse(StrictModel):
+    false_acceptance_rate: float
+    false_rejection_rate: float
+    genuine_count: int
+    impostor_count: int
+    session_disjoint: bool
+
+
+class TrainedProfileResponse(StrictModel):
+    profile_id: int
+    training_count: int
+    validation_count: int
+    calibration: CalibrationResponse
+
+
+class TrainResponse(StrictModel):
+    model_version: str
+    trained_profiles: list[TrainedProfileResponse]
+    skipped_profile_ids: list[int]
+
+
+class ModelProfileStatus(StrictModel):
+    profile_id: int
+    sample_count: int
+    status: Literal["needs_data", "needs_training", "stale", "ready"]
+    training_count: int | None = None
+    validation_count: int | None = None
+    calibration: CalibrationResponse | None = None
+
+
+class ModelStatusResponse(StrictModel):
+    model_version: str
+    minimum_samples_per_profile: int
+    minimum_profiles: int
+    eligible_profile_count: int
+    profiles: list[ModelProfileStatus]
+
+
+class AuthenticationRequest(StrictModel):
+    profile_id: int
+    sample: SampleCreate
+
+
+class AuthenticationResponse(StrictModel):
+    profile_id: int
+    similarity_score: float
+    decision_threshold: float
+    distance: float
+    accepted: bool
+    model_version: str
+    feature_matrix_version: str
+    calibration: CalibrationResponse
+    explanation: str

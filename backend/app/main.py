@@ -6,19 +6,38 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
 
-from app.database import Base, Profile, TypingSample, engine, get_db
+from app.baseline import (
+    FEATURE_MATRIX_VERSION,
+    MIN_PROFILES,
+    MIN_SAMPLES_PER_PROFILE,
+    MODEL_VERSION,
+    BaselineModel,
+    InsufficientDataError,
+    Recording,
+    fit_baselines,
+    score_sample,
+)
+from app.baseline_service import load_snapshot
+from app.database import Base, BaselineArtifact, Profile, TypingSample, engine, get_db
 from app.schemas import (
     ENROLLMENT_TARGET,
+    AuthenticationRequest,
+    AuthenticationResponse,
+    CalibrationResponse,
+    ModelProfileStatus,
+    ModelStatusResponse,
     ProfileCreate,
     ProfileResponse,
     SampleCreate,
     SampleMetadata,
     SampleResponse,
     SamplesResponse,
+    TrainedProfileResponse,
+    TrainResponse,
 )
 
 
@@ -32,7 +51,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="KeyRhythm API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="KeyRhythm API", version="0.3.0", lifespan=lifespan)
 DbSession = Annotated[Session, Depends(get_db)]
 
 
@@ -158,4 +177,158 @@ def list_samples(profile_id: int, db: DbSession) -> SamplesResponse:
             )
             for s in samples
         ],
+    )
+
+
+def calibration_response(model: BaselineModel) -> CalibrationResponse:
+    return CalibrationResponse(
+        **model.calibration.__dict__, session_disjoint=model.session_disjoint
+    )
+
+
+def current_snapshot(db: Session) -> tuple[list[Recording], str]:
+    try:
+        return load_snapshot(db)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=409, detail="Stored timing data is invalid"
+        ) from exc
+
+
+@app.post("/api/v1/models/train", response_model=TrainResponse)
+def train_baseline(db: DbSession) -> TrainResponse:
+    recordings, fingerprint = current_snapshot(db)
+    try:
+        models = fit_baselines(recordings)
+    except InsufficientDataError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.execute(delete(BaselineArtifact))
+    for model in models.values():
+        db.add(
+            BaselineArtifact(
+                profile_id=model.profile_id,
+                model_version=MODEL_VERSION,
+                dataset_fingerprint=fingerprint,
+                state=model.to_json(),
+            )
+        )
+    db.commit()
+    all_profile_ids = set(db.scalars(select(Profile.id)))
+    return TrainResponse(
+        model_version=MODEL_VERSION,
+        trained_profiles=[
+            TrainedProfileResponse(
+                profile_id=model.profile_id,
+                training_count=len(model.train_ids),
+                validation_count=len(model.validation_ids),
+                calibration=calibration_response(model),
+            )
+            for model in models.values()
+        ],
+        skipped_profile_ids=sorted(all_profile_ids - models.keys()),
+    )
+
+
+@app.get("/api/v1/models/status", response_model=ModelStatusResponse)
+def model_status(db: DbSession) -> ModelStatusResponse:
+    recordings, fingerprint = current_snapshot(db)
+    counts: dict[int, int] = {}
+    for item in recordings:
+        counts[item.profile_id] = counts.get(item.profile_id, 0) + 1
+    artifacts = {item.profile_id: item for item in db.scalars(select(BaselineArtifact))}
+    eligible = sum(count >= MIN_SAMPLES_PER_PROFILE for count in counts.values())
+    profiles = []
+    for profile_id in db.scalars(select(Profile.id).order_by(Profile.id)):
+        count = counts.get(profile_id, 0)
+        artifact = artifacts.get(profile_id)
+        if count < MIN_SAMPLES_PER_PROFILE:
+            profiles.append(
+                ModelProfileStatus(
+                    profile_id=profile_id, sample_count=count, status="needs_data"
+                )
+            )
+        elif artifact is None:
+            profiles.append(
+                ModelProfileStatus(
+                    profile_id=profile_id, sample_count=count, status="needs_training"
+                )
+            )
+        elif (
+            artifact.dataset_fingerprint != fingerprint
+            or artifact.model_version != MODEL_VERSION
+        ):
+            profiles.append(
+                ModelProfileStatus(
+                    profile_id=profile_id, sample_count=count, status="stale"
+                )
+            )
+        else:
+            try:
+                model = BaselineModel.from_json(profile_id, artifact.state)
+            except (KeyError, TypeError, ValueError):
+                profiles.append(
+                    ModelProfileStatus(
+                        profile_id=profile_id, sample_count=count, status="stale"
+                    )
+                )
+            else:
+                profiles.append(
+                    ModelProfileStatus(
+                        profile_id=profile_id,
+                        sample_count=count,
+                        status="ready",
+                        training_count=len(model.train_ids),
+                        validation_count=len(model.validation_ids),
+                        calibration=calibration_response(model),
+                    )
+                )
+    return ModelStatusResponse(
+        model_version=MODEL_VERSION,
+        minimum_samples_per_profile=MIN_SAMPLES_PER_PROFILE,
+        minimum_profiles=MIN_PROFILES,
+        eligible_profile_count=eligible,
+        profiles=profiles,
+    )
+
+
+@app.post("/api/v1/authenticate", response_model=AuthenticationResponse)
+def authenticate(
+    payload: AuthenticationRequest, db: DbSession
+) -> AuthenticationResponse:
+    existing_profile(payload.profile_id, db)
+    artifact = db.get(BaselineArtifact, payload.profile_id)
+    if artifact is None:
+        raise HTTPException(
+            status_code=409, detail="Train the baseline before verification"
+        )
+    _, fingerprint = current_snapshot(db)
+    if (
+        artifact.dataset_fingerprint != fingerprint
+        or artifact.model_version != MODEL_VERSION
+    ):
+        raise HTTPException(
+            status_code=409, detail="Enrollment data changed; retrain the baseline"
+        )
+    try:
+        model = BaselineModel.from_json(payload.profile_id, artifact.state)
+        score, distance, accepted = score_sample(model, payload.sample.timing_sequence)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="Stored baseline is invalid; retrain it"
+        ) from exc
+    threshold = 1 / (1 + model.threshold_distance)
+    return AuthenticationResponse(
+        profile_id=payload.profile_id,
+        similarity_score=score,
+        decision_threshold=threshold,
+        distance=distance,
+        accepted=accepted,
+        model_version=MODEL_VERSION,
+        feature_matrix_version=FEATURE_MATRIX_VERSION,
+        calibration=calibration_response(model),
+        explanation=(
+            "Normalized typing timing is within the validation-calibrated baseline threshold."
+            if accepted
+            else "Normalized typing timing exceeds the validation-calibrated baseline threshold."
+        ),
     )

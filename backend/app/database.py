@@ -31,6 +31,9 @@ class Profile(Base):
     samples: Mapped[list["TypingSample"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan"
     )
+    baseline_artifact: Mapped["BaselineArtifact | None"] = relationship(
+        back_populates="profile", cascade="all, delete-orphan", uselist=False
+    )
 
 
 class TypingSample(Base):
@@ -48,6 +51,21 @@ class TypingSample(Base):
     feature_version: Mapped[str] = mapped_column(String(24), nullable=False)
     timing_sequence: Mapped[dict] = mapped_column(JSON, nullable=False)
     profile: Mapped[Profile] = relationship(back_populates="samples")
+
+
+class BaselineArtifact(Base):
+    __tablename__ = "baseline_artifacts"
+
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    model_version: Mapped[str] = mapped_column(String(48), nullable=False)
+    dataset_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[dict] = mapped_column(JSON, nullable=False)
+    profile: Mapped[Profile] = relationship(back_populates="baseline_artifact")
 
 
 default_path = Path(__file__).resolve().parents[1] / "data" / "keyrhythm.sqlite3"

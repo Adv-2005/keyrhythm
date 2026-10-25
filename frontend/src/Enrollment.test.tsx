@@ -22,9 +22,9 @@ it('requires consent and sends only aligned timing data for a completed challeng
   fireEvent.change(screen.getByRole('textbox', { name: 'New profile label' }), { target: { value: 'P1' } })
   fireEvent.click(screen.getByRole('button', { name: 'Create profile' }))
   await waitFor(() => expect(screen.getByRole('checkbox').hasAttribute('disabled')).toBe(false))
-  const input = screen.getByRole('textbox', { name: 'Type the sentence exactly' })
-  expect(input.hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('textbox', { name: 'Type the sentence exactly' }).hasAttribute('disabled')).toBe(true)
   fireEvent.click(screen.getByRole('checkbox'))
+  const input = screen.getByRole('textbox', { name: 'Type the sentence exactly' })
   expect(input.hasAttribute('disabled')).toBe(false)
 
   let typed = ''
@@ -56,5 +56,5 @@ it('requires consent and sends only aligned timing data for a completed challeng
   fireEvent.change(screen.getByRole('textbox', { name: 'New profile label' }), { target: { value: 'P2' } })
   fireEvent.click(screen.getByRole('button', { name: 'Create profile' }))
   await waitFor(() => expect(screen.getByRole('checkbox').hasAttribute('checked')).toBe(false))
-  expect(input.hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('textbox', { name: 'Type the sentence exactly' }).hasAttribute('disabled')).toBe(true)
 })
