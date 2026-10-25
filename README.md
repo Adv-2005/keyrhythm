@@ -2,7 +2,7 @@
 
 KeyRhythm is a local research application for studying continuous user verification from keystroke timing. The [product requirements](plan.md) and [implementation plan](docs/implementation-plan.md) define the milestone scope.
 
-**Current status: Milestone 5.** Profiles, consented typing capture, local SQLite storage, baseline and Siamese verification, and saved held-out model comparisons are available. The complete dashboard and final academic deliverables remain for later milestones.
+**Current status: Milestone 6.** The dashboard connects profiles, consented typing capture, baseline and Siamese verification, training state, verification trial summaries, and saved held-out model comparisons. Final academic testing and deliverables remain for Milestone 7.
 
 ## Requirements
 
@@ -62,22 +62,23 @@ Push-Location backend
 Pop-Location
 ```
 
-The frontend build includes TypeScript checking. Tests cover profile and sample lifecycle, invalid timing data, text privacy, browser capture and consent, recording splits, pair labels, shared encoder shapes, repeatable neural training, checkpoint loading, model staleness, held-out trial parity, metric denominators, and live result display. Neural and evaluation tests are skipped if PyTorch is not installed.
+The frontend build includes TypeScript checking. Tests cover profile and sample lifecycle, invalid timing data, text privacy, browser capture and consent, recording splits, pair labels, shared encoder shapes, repeatable neural training, checkpoint loading, model staleness, held-out trial parity, metric denominators, trial summary retention, and live dashboard values. Neural and evaluation tests are skipped if PyTorch is not installed.
 
 ## Layout and data policy
 
 ```text
-frontend/src/                 Dashboard, enrolment, verification, shared capture, API client
+frontend/src/                 Live dashboard, enrolment, verification, laboratory, evaluation
 frontend/vite.config.ts       React, Tailwind, tests, and local API proxy
 frontend/package-lock.json    Tested npm dependency graph
 backend/app/main.py           FastAPI health, profile, sample, and model routes
 backend/app/schemas.py        Versioned timing validation and API models
-backend/app/database.py       SQLite profile and sample models
+backend/app/database.py       SQLite profiles, samples, artifacts, experiments, trial summaries
 backend/app/baseline.py       Feature extraction, robust scaling, calibration, inference
 backend/app/baseline_service.py SQLite snapshot and dataset fingerprint
 backend/app/siamese.py        Shared CNN, pair construction, training, calibration, inference
 backend/app/siamese_service.py Checkpoint storage and loading
-frontend/src/ModelLaboratory.tsx Neural training controls and validation history
+frontend/src/ModelLaboratory.tsx Baseline/neural controls, validation loss chart, saved comparison
+frontend/src/Overview.tsx      Live counts, model state, latest evaluation
 frontend/src/Evaluation.tsx Evaluation results, comparison, and plot downloads
 backend/app/evaluation.py     Split audit, held-out trials, metrics, reference-count study
 backend/app/evaluation_service.py Saved experiment lifecycle and code revision
@@ -88,11 +89,11 @@ backend/requirements-dev.lock Tested Python API/test dependencies
 docs/implementation-plan.md   Milestone gates and research risks
 ```
 
-The initial version is an academic prototype, not an identity-security product. Timing capture runs only in the designated challenge field after consent. Raw keyboard events and entered challenge text stay transient in the browser; only numeric timing sequences and pseudonymous profile labels are sent. Local databases, generated model artifacts, and environment files are excluded by `.gitignore`.
+The initial version is an academic prototype, not an identity-security product. Timing capture runs only in the designated challenge field after consent. Raw keyboard events and entered challenge text stay transient in the browser; only numeric timing sequences and pseudonymous profile labels are sent. Successful verification stores a summary with profile ID, score, threshold, decision, model version, and timestamp, never the fresh timing sequence. The Authentication page shows the 20 most recent summaries; `GET /api/v1/trials` accepts a `limit` from 1 to 100. Deleting a profile removes its trial summaries. Local databases, generated model artifacts, and environment files are excluded by `.gitignore`.
 
 ## Enrolment and timing format
 
-Create a profile, select it, accept the consent notice, and type the displayed sentence exactly. Corrections, paste, composition input, focus loss, repeated keys, and incomplete key releases require a sample restart. The collection target defaults to 10 samples per profile and is configurable through `KEYRHYTHM_ENROLLMENT_TARGET`; this is a UI collection target, not a claim of dataset sufficiency. Deleting a profile deletes its samples and derived experiment records. There are no automatic database backups or raw timing exports; if you copy the SQLite file or download a plot, manage and delete that copy separately.
+Create a profile, select it, accept the consent notice, and type the displayed sentence exactly. Corrections, paste, composition input, focus loss, repeated keys, and incomplete key releases require a sample restart. The collection target defaults to 10 samples per profile and is configurable through `KEYRHYTHM_ENROLLMENT_TARGET`; this is a UI collection target, not a claim of dataset sufficiency. Deleting a profile deletes its samples, verification summaries, and derived experiment records. There are no automatic database backups or raw timing exports; if you copy the SQLite file or download a plot, manage and delete that copy separately.
 
 The fixed challenge is `the quick brown fox jumps over the lazy dog.` (`fixed-1`, 44 positions). `timing-1` uses monotonic browser event timestamps in **milliseconds**. For each challenge position, `hold_ms[i]` is key-up minus key-down. For positions 1 through 43, `down_down_ms[i]` is the next key-down minus the current key-down; `flight_ms[i]` is the next key-down minus the current key-up, so negative values represent overlapping holds. `long_pauses[i]` is true when `flight_ms[i] >= 750`. `total_ms` is the final key-up minus the first key-down. Arrays are JSON numeric lists stored in SQLite with their challenge and feature versions, a random session ID, and a sample ID. List APIs return metadata and counts, never the timing arrays.
 
@@ -106,7 +107,7 @@ Collect at least **six valid samples for each of two profiles**, then open **Aut
 
 For each eligible profile, validation reserves at least two original recordings. It separates entire collection sessions when enough training and validation recordings remain, and otherwise splits by recording ID. The threshold minimizes the average of false acceptance and false rejection on genuine and other-profile **validation** recordings; ties favor fewer false acceptances. A sample is accepted only when its similarity is strictly greater than the threshold. The API returns validation calibration rates and counts as preliminary diagnostics. These rates are not a held-out performance estimate. The final comparison fits a separate baseline on the neural model's saved training split.
 
-The baseline API endpoints are `POST /api/v1/models/train`, `GET /api/v1/models/status`, and `POST /api/v1/authenticate`. The UI calls them directly. Training returns a conflict response until the minimum data requirement is met. Authentication returns a similarity score, threshold, decision, model version, and calibration context; it returns a conflict response when enrollment has changed since training.
+The baseline API endpoints are `POST /api/v1/models/train`, `GET /api/v1/models/status`, and `POST /api/v1/authenticate`. The UI calls them directly. Training returns a conflict response until the minimum data requirement is met. Authentication returns a similarity score, threshold, decision, model version, and calibration context; it returns a conflict response when enrollment has changed since training. The fresh timing sequence is discarded after inference; a decision summary is retained as described above.
 
 ## Siamese training and verification
 

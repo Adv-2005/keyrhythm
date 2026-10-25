@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
@@ -29,6 +29,7 @@ from app.database import (
     Profile,
     SiameseArtifact,
     TypingSample,
+    VerificationTrial,
     engine,
     get_db,
 )
@@ -56,6 +57,7 @@ from app.schemas import (
     SiameseTrainResponse,
     TrainedProfileResponse,
     TrainResponse,
+    VerificationTrialResponse,
 )
 from app.siamese_service import checkpoint_path, remove_checkpoint
 
@@ -70,7 +72,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="KeyRhythm API", version="0.5.0", lifespan=lifespan)
+app = FastAPI(title="KeyRhythm API", version="0.6.0", lifespan=lifespan)
 DbSession = Annotated[Session, Depends(get_db)]
 
 
@@ -499,6 +501,44 @@ def experiment_plot(experiment_id: int, plot_name: str, db: DbSession) -> Respon
     )
 
 
+@app.get("/api/v1/trials", response_model=list[VerificationTrialResponse])
+def list_verification_trials(
+    db: DbSession, limit: int = Query(default=20, ge=1, le=100)
+) -> list[VerificationTrialResponse]:
+    """Return recent decisions without any captured timing sequence."""
+    trials = db.scalars(
+        select(VerificationTrial).order_by(VerificationTrial.id.desc()).limit(limit)
+    )
+    return [
+        VerificationTrialResponse(
+            id=trial.id,
+            profile_id=trial.profile_id,
+            created_at=trial.created_at,
+            model_type=trial.model_type,
+            model_version=trial.model_version,
+            similarity_score=trial.similarity_score,
+            decision_threshold=trial.decision_threshold,
+            accepted=trial.accepted,
+        )
+        for trial in trials
+    ]
+
+
+def save_verification(db: Session, result: AuthenticationResponse) -> AuthenticationResponse:
+    db.add(
+        VerificationTrial(
+            profile_id=result.profile_id,
+            model_type=result.model_type,
+            model_version=result.model_version,
+            similarity_score=result.similarity_score,
+            decision_threshold=result.decision_threshold,
+            accepted=result.accepted,
+        )
+    )
+    db.commit()
+    return result
+
+
 @app.post("/api/v1/authenticate", response_model=AuthenticationResponse)
 def authenticate(
     payload: AuthenticationRequest, db: DbSession
@@ -529,7 +569,7 @@ def authenticate(
             raise HTTPException(
                 status_code=409, detail="Stored Siamese model is invalid; retrain it"
             ) from exc
-        return AuthenticationResponse(
+        return save_verification(db, AuthenticationResponse(
             profile_id=payload.profile_id,
             model_type="siamese",
             similarity_score=score,
@@ -547,7 +587,7 @@ def authenticate(
                 if accepted else
                 "Neural embedding exceeds the validation-calibrated profile threshold."
             ),
-        )
+        ))
     artifact = db.get(BaselineArtifact, payload.profile_id)
     if artifact is None:
         raise HTTPException(
@@ -569,7 +609,7 @@ def authenticate(
             status_code=409, detail="Stored baseline is invalid; retrain it"
         ) from exc
     threshold = 1 / (1 + model.threshold_distance)
-    return AuthenticationResponse(
+    return save_verification(db, AuthenticationResponse(
         profile_id=payload.profile_id,
         model_type="baseline",
         similarity_score=score,
@@ -584,4 +624,4 @@ def authenticate(
             if accepted
             else "Normalized typing timing exceeds the validation-calibrated baseline threshold."
         ),
-    )
+    ))

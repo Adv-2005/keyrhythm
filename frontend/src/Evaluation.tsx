@@ -31,6 +31,8 @@ export default function Evaluation() {
   const [history, setHistory] = useState<ExperimentSummary[]>([])
   const [experiment, setExperiment] = useState<Experiment | null>(null)
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -39,13 +41,14 @@ export default function Evaluation() {
       setHistory(items)
       if (items[0]) setExperiment(await getExperiment(items[0].id, controller.signal))
     }).catch(() => {
-      if (!controller.signal.aborted) setMessage('Could not load experiments. Check the API connection.')
-    })
+      if (!controller.signal.aborted) setError('Could not load experiments. Check the API connection.')
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [])
 
   async function evaluate() {
     setBusy(true)
+    setError('')
     setMessage('Evaluating both models on the saved held-out recordings…')
     try {
       const created = await runEvaluation()
@@ -53,17 +56,21 @@ export default function Evaluation() {
       setHistory(await listExperiments())
       setMessage('Evaluation saved. Repeating this run returns the existing result for the same model and dataset.')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Evaluation failed.')
+      setError(error instanceof Error ? error.message : 'Evaluation failed.')
+      setMessage('')
     } finally { setBusy(false) }
   }
 
   async function selectExperiment(id: number) {
     setBusy(true)
+    setError('')
+    setMessage('Loading saved experiment…')
     try {
       setExperiment(await getExperiment(id))
       setMessage('')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not open experiment.')
+      setError(error instanceof Error ? error.message : 'Could not open experiment.')
+      setMessage('')
     } finally { setBusy(false) }
   }
 
@@ -76,10 +83,10 @@ export default function Evaluation() {
       <h2 className="text-xl font-semibold">Held-out verification experiment</h2>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Both models use the same recorded test attempts. Training recordings fit references, validation recordings choose thresholds, and test recordings produce the metrics below. Train the Siamese model in Model laboratory before running this comparison.</p>
       <div className="mt-5 flex flex-wrap items-end gap-4">
-        <button type="button" onClick={evaluate} disabled={busy}
+        <button type="button" onClick={evaluate} disabled={busy || loading}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Evaluating…' : 'Run evaluation'}</button>
         <div><label htmlFor="experiment-select" className="block text-sm font-medium">Saved experiment</label>
-          <select id="experiment-select" disabled={busy || history.length === 0} value={experiment?.id ?? ''}
+          <select id="experiment-select" disabled={busy || loading || history.length === 0} value={experiment?.id ?? ''}
             onChange={(event) => selectExperiment(Number(event.target.value))}
             className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
             {history.length === 0 && <option value="">None yet</option>}
@@ -87,7 +94,10 @@ export default function Evaluation() {
           </select>
         </div>
       </div>
+      {loading && <p role="status" className="mt-4 text-sm text-slate-600">Loading saved experiments…</p>}
       {message && <p role="status" className="mt-4 text-sm text-slate-700">{message}</p>}
+      {error && <p role="alert" className="mt-4 text-sm text-rose-700">{error}</p>}
+      {!loading && !error && <p className="mt-3 text-xs text-slate-500">{history.length} saved {history.length === 1 ? 'experiment' : 'experiments'}</p>}
     </section>
 
     {result && baseline && siamese ? <>
@@ -113,9 +123,11 @@ export default function Evaluation() {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <h3 className="text-lg font-semibold">Protocol and limits</h3>
         <p className="mt-2 text-sm text-slate-600">{result.protocol_version} · dataset {result.dataset_fingerprint.slice(0, 12)} · {result.model_versions.baseline} versus {result.model_versions.siamese}</p>
+        <p className="mt-3 text-sm text-slate-600">Siamese training: {result.training_configuration.epochs} epochs, {result.training_configuration.embedding_dim} embedding dimensions, batch size {result.training_configuration.batch_size}, learning rate {result.training_configuration.learning_rate}, margin {result.training_configuration.margin}, seed {result.training_configuration.seed}. Best validation epoch {result.best_epoch}; PyTorch {result.torch_version}.</p>
         <p className="mt-3 text-sm text-slate-600">{Object.values(result.split_configuration).filter((split) => split.session_disjoint).length} of {result.profile_count} profiles have session-disjoint training, validation, and test partitions.</p>
+        <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><caption className="mb-2 text-left font-semibold">Saved dataset split</caption><thead><tr className="border-b border-slate-200"><th className="py-2">Profile</th><th>Training</th><th>Validation</th><th>Held out</th><th>Sessions</th></tr></thead><tbody>{Object.entries(result.split_configuration).map(([profileId, split]) => <tr key={profileId} className="border-b border-slate-100"><th scope="row" className="py-2 font-medium">{profileId}</th><td>{split.train_ids.length}</td><td>{split.validation_ids.length}</td><td>{split.test_ids.length}</td><td>{split.session_disjoint ? 'Separate' : 'May overlap'}</td></tr>)}</tbody></table></div>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-600">{result.limitations.map((item) => <li key={item}>{item}</li>)}</ul>
       </section>
-    </> : <section className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-600 shadow-sm">No saved evaluation yet. Collect and train with consenting participants, then run the comparison.</section>}
+    </> : !loading && !error && <section className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-600 shadow-sm">No saved evaluation yet. Collect and train with consenting participants, then run the comparison.</section>}
   </div>
 }

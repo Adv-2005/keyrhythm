@@ -16,7 +16,7 @@ from app.baseline import (
     fit_baselines,
     score_sample,
 )
-from app.database import Base, BaselineArtifact, get_db
+from app.database import Base, BaselineArtifact, VerificationTrial, get_db
 from app.main import app
 from app.schemas import CHALLENGE_LENGTH, TimingSequence
 
@@ -186,6 +186,12 @@ def test_training_authentication_staleness_and_deletion(
             accepted.json()["similarity_score"] > accepted.json()["decision_threshold"]
         )
         assert "timing_sequence" not in accepted.json()
+        trials = (await client.get("/api/v1/trials")).json()
+        assert [trial["accepted"] for trial in trials] == [False, True]
+        assert all(trial["profile_id"] == profile_ids[0] for trial in trials)
+        assert "timing_sequence" not in str(trials)
+        assert "session_id" not in str(trials)
+        assert (await client.get("/api/v1/trials?limit=1")).json() == trials[:1]
 
         extra = attempt(profile_ids[0], sequence(87, 72))["sample"]
         assert (
@@ -196,6 +202,7 @@ def test_training_authentication_staleness_and_deletion(
                 "/api/v1/authenticate", json=attempt(profile_ids[0], sequence(85, 70))
             )
         ).status_code == 409
+        assert len((await client.get("/api/v1/trials")).json()) == 2
         assert all(
             entry["status"] == "stale"
             for entry in (await client.get("/api/v1/models/status")).json()["profiles"]
@@ -206,6 +213,7 @@ def test_training_authentication_staleness_and_deletion(
         ).status_code == 204
         with factory() as db:
             assert db.get(BaselineArtifact, profile_ids[0]) is None
+            assert db.scalars(select(VerificationTrial)).all() == []
             assert (
                 db.scalar(
                     select(BaselineArtifact).where(

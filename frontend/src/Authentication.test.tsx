@@ -8,6 +8,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 it('trains the baseline and displays the returned verification decision', async () => {
   let trained = false
   let authenticationBody: string | undefined
+  let trialRecorded = false
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/profiles')) {
       return { ok: true, status: 200, json: async () => [
@@ -30,12 +31,18 @@ it('trains the baseline and displays the returned verification decision', async 
         minimum_samples_per_profile: 10, eligible_profile_count: 2, profiles: [], history: [], best_epoch: null,
       }) }
     }
+    if (url.endsWith('/trials')) return { ok: true, status: 200, json: async () => trialRecorded ? [{
+      id: 1, profile_id: 1, created_at: '2026-10-25T00:00:00Z', model_type: 'baseline',
+      model_version: 'baseline-distance-v1', similarity_score: 0.872,
+      decision_threshold: 0.7, accepted: true,
+    }] : [] }
     if (url.endsWith('/models/train')) {
       trained = true
       return { ok: true, status: 200, json: async () => ({ model_version: 'baseline-distance-v1' }) }
     }
     if (url.endsWith('/authenticate')) {
       authenticationBody = init?.body as string
+      trialRecorded = true
       return { ok: true, status: 200, json: async () => ({
         profile_id: 1, model_type: 'baseline', similarity_score: 0.872, decision_threshold: 0.7,
         distance: 0.1468, accepted: true, model_version: 'baseline-distance-v1',
@@ -71,6 +78,8 @@ it('trains the baseline and displays the returned verification decision', async 
   fireEvent.click(screen.getByRole('button', { name: 'Verify sample' }))
   expect(await screen.findByRole('heading', { name: 'Accepted by baseline' })).toBeTruthy()
   expect(screen.getByText(/Similarity 0.872 · threshold 0.700/)).toBeTruthy()
+  expect(await screen.findByRole('heading', { name: 'Recent verification trials' })).toBeTruthy()
+  expect(await screen.findByText('0.872')).toBeTruthy()
   await waitFor(() => expect(authenticationBody).toBeDefined())
   const sent = JSON.parse(authenticationBody!)
   expect(sent.profile_id).toBe(1)

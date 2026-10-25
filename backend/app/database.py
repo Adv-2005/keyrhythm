@@ -34,6 +34,9 @@ class Profile(Base):
     baseline_artifact: Mapped["BaselineArtifact | None"] = relationship(
         back_populates="profile", cascade="all, delete-orphan", uselist=False
     )
+    verification_trials: Mapped[list["VerificationTrial"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
 
 
 class TypingSample(Base):
@@ -91,6 +94,26 @@ class Experiment(Base):
     dataset_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     protocol_version: Mapped[str] = mapped_column(String(48), nullable=False)
     state: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class VerificationTrial(Base):
+    """A verification summary; fresh timing data is never stored here."""
+
+    __tablename__ = "verification_trials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    model_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(48), nullable=False)
+    similarity_score: Mapped[float] = mapped_column(nullable=False)
+    decision_threshold: Mapped[float] = mapped_column(nullable=False)
+    accepted: Mapped[bool] = mapped_column(nullable=False)
+    profile: Mapped[Profile] = relationship(back_populates="verification_trials")
 
 
 default_path = Path(__file__).resolve().parents[1] / "data" / "keyrhythm.sqlite3"

@@ -9,10 +9,13 @@ afterEach(() => {
 
 describe('dashboard foundation', () => {
   it('shows backend connectivity from the health endpoint', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    const fetchMock = vi.fn(async (url: string) => ({
       ok: true,
-      json: async () => ({ status: 'ok' }),
-    })
+      json: async () => url.endsWith('/health') ? { status: 'ok' }
+        : url.endsWith('/profiles') || url.endsWith('/experiments') ? []
+        : url.endsWith('/models/status') ? { model_version: 'baseline-distance-v1', profiles: [] }
+        : { model_version: 'siamese-cnn-v1', status: 'needs_data' },
+    }))
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
@@ -39,7 +42,7 @@ describe('dashboard foundation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Authentication' }))
     expect(screen.getByRole('heading', { name: 'Verify typing rhythm' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Model laboratory' }))
-    expect(screen.getByRole('heading', { name: 'Siamese CNN' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Training results' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Evaluation' }))
     expect(screen.getByRole('heading', { name: 'Held-out verification experiment' })).toBeTruthy()
   })

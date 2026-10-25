@@ -181,6 +181,17 @@ class AuthenticationResponse(StrictModel):
     explanation: str
 
 
+class VerificationTrialResponse(StrictModel):
+    id: int
+    profile_id: int
+    created_at: datetime
+    model_type: Literal["baseline", "siamese"]
+    model_version: str
+    similarity_score: float
+    decision_threshold: float
+    accepted: bool
+
+
 class SiameseTrainRequest(StrictModel):
     epochs: int = Field(default=20, ge=1, le=100)
     batch_size: int = Field(default=32, ge=4, le=256)

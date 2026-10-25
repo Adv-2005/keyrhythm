@@ -30,6 +30,7 @@ def test_startup_creates_sqlite_tables(
                 "profiles",
                 "siamese_artifacts",
                 "typing_samples",
+                "verification_trials",
             }
 
     asyncio.run(start())

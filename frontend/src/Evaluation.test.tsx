@@ -23,6 +23,9 @@ it('shows saved held-out metrics and omits unsupported AUC and EER claims', asyn
           profile_count: 3, sample_count: 30, test_recording_count: 9,
           trial_count_per_model: 27,
           model_versions: { baseline: 'baseline-distance-v1', siamese: 'siamese-cnn-v1' },
+          training_configuration: { epochs: 2, batch_size: 32, learning_rate: 0.001,
+            embedding_dim: 32, margin: 1, seed: 42 },
+          best_epoch: 1, torch_version: '2.0',
           split_configuration: { '1': { train_ids: [1], validation_ids: [2], test_ids: [3], session_disjoint: true } },
           models: { baseline: { metrics }, siamese: { metrics: { ...metrics, false_positive: 1, false_acceptance_rate: 1 / 18 } } },
           reference_count_effect: [{ reference_count: 2, baseline: metrics, siamese: metrics }],
@@ -34,6 +37,7 @@ it('shows saved held-out metrics and omits unsupported AUC and EER claims', asyn
   }))
 
   render(<Evaluation />)
+  await screen.findByText('0 saved experiments')
   fireEvent.click(screen.getByRole('button', { name: 'Run evaluation' }))
   expect(await screen.findByText('Held-out model comparison')).toBeTruthy()
   expect(screen.getAllByText('Insufficient attempts').length).toBe(4)

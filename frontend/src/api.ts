@@ -129,6 +129,20 @@ export const authenticate = (profile_id: number, session_id: string, timing_sequ
     }),
   })
 
+export type VerificationTrial = {
+  id: number
+  profile_id: number
+  created_at: string
+  model_type: 'baseline' | 'siamese'
+  model_version: string
+  similarity_score: number
+  decision_threshold: number
+  accepted: boolean
+}
+
+export const listTrials = (signal?: AbortSignal) =>
+  apiRequest<VerificationTrial[]>('/trials', { signal })
+
 export type EvaluationMetrics = {
   genuine_count: number
   impostor_count: number
@@ -167,6 +181,9 @@ export type Experiment = {
     test_recording_count: number
     trial_count_per_model: number
     model_versions: Record<string, string>
+    training_configuration: SiameseTrainConfig
+    best_epoch: number
+    torch_version: string
     split_configuration: Record<string, { train_ids: number[]; validation_ids: number[]; test_ids: number[]; session_disjoint: boolean }>
     models: Record<'baseline' | 'siamese', { metrics: EvaluationMetrics }>
     reference_count_effect: { reference_count: number; baseline: EvaluationMetrics; siamese: EvaluationMetrics }[]

@@ -4,6 +4,7 @@ import Authentication from './Authentication'
 import Enrollment from './Enrollment'
 import Evaluation from './Evaluation'
 import ModelLaboratory from './ModelLaboratory'
+import Overview from './Overview'
 
 const sections = [
   { id: 'overview', label: 'Overview' },
@@ -28,13 +29,14 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController()
+    setConnection('checking')
     getHealth(controller.signal)
       .then(() => setConnection('connected'))
       .catch(() => {
         if (!controller.signal.aborted) setConnection('unavailable')
       })
     return () => controller.abort()
-  }, [])
+  }, [section])
 
   const activeSection = sections.find((item) => item.id === section)!
 
@@ -64,7 +66,7 @@ function App() {
           ))}
         </nav>
         <div className="hidden px-6 pb-7 pt-8 text-xs leading-5 text-slate-500 lg:mt-auto lg:block">
-          Academic research prototype<br />Milestone 5 evaluation
+          Academic research prototype<br />Milestone 6 dashboard
         </div>
       </aside>
 
@@ -84,47 +86,8 @@ function App() {
           </div>
         </header>
 
-        {section === 'overview' ? <Overview onNavigate={setSection} /> : section === 'enrolment' ? <Enrollment /> : section === 'authentication' ? <Authentication /> : section === 'laboratory' ? <ModelLaboratory /> : <Evaluation />}
+        {section === 'overview' ? <Overview onNavigate={setSection} /> : section === 'enrolment' ? <Enrollment /> : section === 'authentication' ? <Authentication /> : section === 'laboratory' ? <ModelLaboratory onNavigate={setSection} /> : <Evaluation />}
       </main>
-    </div>
-  )
-}
-
-function Overview({ onNavigate }: { onNavigate: (section: SectionId) => void }) {
-  return (
-    <div className="space-y-7">
-      <section className="overflow-hidden rounded-2xl bg-indigo-950 p-8 text-white shadow-sm sm:p-10">
-        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-200">Continuous authentication study</p>
-        <h2 className="max-w-2xl text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">Explore whether typing rhythm can help verify a user over time.</h2>
-        <p className="mt-4 max-w-2xl leading-7 text-indigo-100">KeyRhythm compares a conventional verifier with a Siamese neural network using consented, timing-only samples from a fixed typing challenge.</p>
-        <button type="button" onClick={() => onNavigate('enrolment')} className="mt-7 rounded-lg bg-white px-5 py-3 text-sm font-semibold text-indigo-950 hover:bg-indigo-50">Start enrolment</button>
-      </section>
-
-      <section aria-labelledby="workflow-heading">
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Project workflow</p>
-            <h2 id="workflow-heading" className="text-xl font-semibold tracking-tight">From samples to evidence</h2>
-          </div>
-          <span className="text-sm text-slate-500">Held-out evaluation available</span>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            { number: '01', title: 'Collect', text: 'Enrol consenting participants through a fixed challenge and capture timing features.', milestone: 'Milestone 2' },
-            { number: '02', title: 'Compare', text: 'Fit a simple baseline, then train a Siamese model on carefully split samples.', milestone: 'Milestones 3–4' },
-            { number: '03', title: 'Evaluate', text: 'Measure verification results on held-out recordings and inspect limitations.', milestone: 'Milestone 5' },
-          ].map((item) => (
-            <article key={item.number} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <span className="text-sm font-semibold text-indigo-600">{item.number}</span>
-              <h3 className="mt-4 text-lg font-semibold">{item.title}</h3>
-              <p className="mt-2 min-h-20 text-sm leading-6 text-slate-600">{item.text}</p>
-              <p className="mt-5 border-t border-slate-100 pt-4 text-xs font-medium uppercase tracking-wider text-slate-500">{item.milestone}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <p className="text-sm leading-6 text-slate-500">This is a local academic prototype. It is not intended to replace passwords or multifactor authentication.</p>
     </div>
   )
 }

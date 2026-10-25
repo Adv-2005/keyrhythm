@@ -19,6 +19,7 @@ it('requires consent and sends only aligned timing data for a completed challeng
   }))
 
   render(<Enrollment />)
+  await screen.findByText('No profiles yet. Create one to begin enrolment.')
   fireEvent.change(screen.getByRole('textbox', { name: 'New profile label' }), { target: { value: 'P1' } })
   fireEvent.click(screen.getByRole('button', { name: 'Create profile' }))
   await waitFor(() => expect(screen.getByRole('checkbox').hasAttribute('disabled')).toBe(false))

@@ -10,6 +10,8 @@ export default function Enrollment() {
   const [consent, setConsent] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [sessionId] = useState(() => crypto.randomUUID())
   const selected = profiles.find((profile) => profile.id === selectedId)
 
@@ -18,7 +20,8 @@ export default function Enrollment() {
     listProfiles(controller.signal).then((items) => {
       setProfiles(items)
       setSelectedId(items[0]?.id ?? null)
-    }).catch(() => { if (!controller.signal.aborted) setMessage('Could not load profiles. Check the API connection.') })
+    }).catch(() => { if (!controller.signal.aborted) setError('Could not load profiles. Check the API connection.') })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [])
 
@@ -26,6 +29,7 @@ export default function Enrollment() {
     event.preventDefault()
     if (!label.trim()) return
     setBusy(true)
+    setError('')
     try {
       const profile = await createProfile(label.trim())
       setProfiles((items) => [...items, profile])
@@ -34,13 +38,14 @@ export default function Enrollment() {
       setLabel('')
       setMessage('Profile created. Read and accept the consent notice to start.')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not create profile.')
+      setError(error instanceof Error ? error.message : 'Could not create profile.')
     } finally { setBusy(false) }
   }
 
   async function removeProfile() {
     if (!selected || !window.confirm(`Delete ${selected.display_name} and all ${selected.sample_count} timing samples?`)) return
     setBusy(true)
+    setError('')
     try {
       await deleteProfile(selected.id)
       const remaining = profiles.filter((profile) => profile.id !== selected.id)
@@ -49,7 +54,7 @@ export default function Enrollment() {
       setConsent(false)
       setMessage('Profile and its samples deleted.')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not delete profile.')
+      setError(error instanceof Error ? error.message : 'Could not delete profile.')
     } finally { setBusy(false) }
   }
 
@@ -70,21 +75,25 @@ export default function Enrollment() {
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="profile-heading">
       <h2 id="profile-heading" className="text-lg font-semibold">Profiles</h2>
       <p className="mt-2 text-sm text-slate-600">Use a pseudonymous label. Timing data remains on this local machine.</p>
+      {loading && <p role="status" className="mt-3 text-sm text-slate-600">Loading profiles…</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-rose-700">{error}</p>}
       <form onSubmit={addProfile} className="mt-5 space-y-3">
         <label htmlFor="profile-label" className="block text-sm font-medium">New profile label</label>
         <input id="profile-label" value={label} maxLength={80} onChange={(event) => setLabel(event.target.value)}
           className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Participant 01" />
-        <button disabled={busy || !label.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Create profile</button>
+        <button disabled={busy || loading || !label.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Create profile</button>
       </form>
       <label htmlFor="profile-select" className="mt-7 block text-sm font-medium">Selected profile</label>
-      <select id="profile-select" value={selectedId ?? ''} disabled={busy || profiles.length === 0}
+      <select id="profile-select" value={selectedId ?? ''} disabled={busy || loading || profiles.length === 0}
         onChange={(event) => { setSelectedId(Number(event.target.value)); setConsent(false); setMessage('') }}
         className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
         {profiles.length === 0 && <option value="">No profiles yet</option>}
         {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.display_name}</option>)}
       </select>
+      {!loading && !selected && !error && <p className="mt-4 text-sm text-slate-600">No profiles yet. Create one to begin enrolment.</p>}
       {selected && <>
         <p className="mt-4 text-sm text-slate-600">{selected.sample_count} / {selected.enrollment_target} samples · {selected.enrollment_status}</p>
+        <progress aria-label="Enrolment progress" className="mt-2 w-full accent-indigo-600" value={Math.min(selected.sample_count, selected.enrollment_target)} max={selected.enrollment_target} />
         <button type="button" onClick={removeProfile} disabled={busy} className="mt-5 text-sm font-medium text-rose-700 hover:underline">Delete profile and samples</button>
       </>}
       {message && <p role="status" className="mt-5 text-sm text-slate-700">{message}</p>}
