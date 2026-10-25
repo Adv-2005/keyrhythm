@@ -1,0 +1,6 @@
+# Install alongside requirements-dev.txt when working on Milestones 3-5.
+numpy>=2,<3
+pandas>=2.2,<3
+scikit-learn>=1.5,<2
+torch>=2.5,<3
+matplotlib>=3.9,<4

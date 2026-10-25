@@ -1,0 +1,5 @@
+# Local API and persistence; SQLite is provided by Python.
+fastapi>=0.115,<1
+pydantic>=2,<3
+SQLAlchemy>=2,<3
+uvicorn>=0.30,<1

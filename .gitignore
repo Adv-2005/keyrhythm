@@ -1,0 +1,45 @@
+# Local configuration and secrets (commit the examples only)
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node and frontend output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local biometric data and generated experiment outputs
+/backend/data/
+/backend/artifacts/
+/backend/*.db
+/backend/*.sqlite
+/backend/*.sqlite3
+/backend/*.db-journal
+/backend/*.sqlite-journal
+/backend/*.sqlite3-journal
+/backend/*.db-wal
+/backend/*.sqlite-wal
+/backend/*.sqlite3-wal
+/backend/*.db-shm
+/backend/*.sqlite-shm
+/backend/*.sqlite3-shm
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
