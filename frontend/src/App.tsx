@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getHealth } from './api'
+import Enrollment from './Enrollment'
 
 const sections = [
   { id: 'overview', label: 'Overview', milestone: 1 },
@@ -60,7 +61,7 @@ function App() {
           ))}
         </nav>
         <div className="hidden px-6 pb-7 pt-8 text-xs leading-5 text-slate-500 lg:mt-auto lg:block">
-          Academic research prototype<br />Milestone 1 foundation
+          Academic research prototype<br />Milestone 2 collection
         </div>
       </aside>
 
@@ -80,7 +81,7 @@ function App() {
           </div>
         </header>
 
-        {section === 'overview' ? <Overview onNavigate={setSection} /> : (
+        {section === 'overview' ? <Overview onNavigate={setSection} /> : section === 'enrolment' ? <Enrollment /> : (
           <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm sm:p-12" aria-labelledby="upcoming-title">
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Milestone {activeSection.milestone}</p>
             <h2 id="upcoming-title" className="text-2xl font-semibold tracking-tight">{activeSection.label} is planned</h2>
@@ -100,7 +101,7 @@ function Overview({ onNavigate }: { onNavigate: (section: SectionId) => void }) 
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-200">Continuous authentication study</p>
         <h2 className="max-w-2xl text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">Explore whether typing rhythm can help verify a user over time.</h2>
         <p className="mt-4 max-w-2xl leading-7 text-indigo-100">KeyRhythm will compare a conventional verifier with a Siamese neural network using consented, timing-only samples from a fixed typing challenge.</p>
-        <button type="button" onClick={() => onNavigate('enrolment')} className="mt-7 rounded-lg bg-white px-5 py-3 text-sm font-semibold text-indigo-950 hover:bg-indigo-50">View enrolment plan</button>
+        <button type="button" onClick={() => onNavigate('enrolment')} className="mt-7 rounded-lg bg-white px-5 py-3 text-sm font-semibold text-indigo-950 hover:bg-indigo-50">Start enrolment</button>
       </section>
 
       <section aria-labelledby="workflow-heading">
@@ -109,7 +110,7 @@ function Overview({ onNavigate }: { onNavigate: (section: SectionId) => void }) 
             <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Project workflow</p>
             <h2 id="workflow-heading" className="text-xl font-semibold tracking-tight">From samples to evidence</h2>
           </div>
-          <span className="text-sm text-slate-500">Foundation in progress</span>
+          <span className="text-sm text-slate-500">Collection available</span>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           {[

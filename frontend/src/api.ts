@@ -1,4 +1,5 @@
 export type HealthResponse = { status: 'ok' }
+import { CHALLENGE_VERSION, FEATURE_VERSION, type TimingSequence } from './timing'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
 
@@ -14,3 +15,35 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
   }
   return { status: 'ok' }
 }
+
+export type Profile = {
+  id: number
+  display_name: string
+  created_at: string
+  sample_count: number
+  enrollment_target: number
+  enrollment_status: 'collecting' | 'ready'
+}
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null) as { detail?: unknown } | null
+    throw new Error(typeof detail?.detail === 'string' ? detail.detail : `Request failed (${response.status})`)
+  }
+  return response.status === 204 ? undefined as T : await response.json() as T
+}
+
+export const listProfiles = (signal?: AbortSignal) => apiRequest<Profile[]>('/profiles', { signal })
+export const createProfile = (display_name: string) => apiRequest<Profile>('/profiles', {
+  method: 'POST', body: JSON.stringify({ display_name }),
+})
+export const deleteProfile = (id: number) => apiRequest<void>(`/profiles/${id}`, { method: 'DELETE' })
+export const submitSample = (id: number, session_id: string, timing_sequence: TimingSequence) =>
+  apiRequest<{ id: number; profile_id: number; created_at: string; sample_count: number }>(`/profiles/${id}/samples`, {
+    method: 'POST',
+    body: JSON.stringify({ consent_acknowledged: true, session_id, challenge_version: CHALLENGE_VERSION, feature_version: FEATURE_VERSION, timing_sequence }),
+  })

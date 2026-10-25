@@ -29,12 +29,14 @@ describe('dashboard foundation', () => {
     expect(await screen.findByText('API unavailable')).toBeTruthy()
   })
 
-  it('navigates to a planned section without inventing results', () => {
+  it('navigates to enrolment and keeps future results planned', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => {})))
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Enrolment' }))
 
-    expect(screen.getByRole('heading', { name: 'Enrolment is planned' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Typing enrolment' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Authentication' }))
+    expect(screen.getByRole('heading', { name: 'Authentication is planned' })).toBeTruthy()
   })
 })
