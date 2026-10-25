@@ -73,6 +73,7 @@ export type ModelStatus = {
 
 export type AuthenticationResult = {
   profile_id: number
+  model_type: 'baseline' | 'siamese'
   similarity_score: number
   decision_threshold: number
   distance: number
@@ -85,11 +86,44 @@ export type AuthenticationResult = {
 
 export const getModelStatus = (signal?: AbortSignal) => apiRequest<ModelStatus>('/models/status', { signal })
 export const trainBaseline = () => apiRequest<unknown>('/models/train', { method: 'POST' })
-export const authenticate = (profile_id: number, session_id: string, timing_sequence: TimingSequence) =>
+export type SiameseProfile = {
+  profile_id: number
+  training_count: number
+  validation_count: number
+  held_out_count: number
+  session_disjoint: boolean
+  calibration: Calibration
+}
+export type LossEpoch = { epoch: number; train_loss: number; validation_loss: number }
+export type SiameseStatus = {
+  model_version: string
+  status: 'needs_data' | 'needs_training' | 'stale' | 'ready'
+  minimum_profiles: number
+  minimum_samples_per_profile: number
+  eligible_profile_count: number
+  best_epoch: number | null
+  history: LossEpoch[]
+  profiles: SiameseProfile[]
+}
+export type SiameseTrainConfig = {
+  epochs: number
+  batch_size: number
+  learning_rate: number
+  embedding_dim: number
+  margin: number
+  seed: number
+}
+export const getSiameseStatus = (signal?: AbortSignal) => apiRequest<SiameseStatus>('/models/siamese/status', { signal })
+export const trainSiamese = (config: SiameseTrainConfig) => apiRequest<unknown>('/models/siamese/train', {
+  method: 'POST', body: JSON.stringify(config),
+})
+export const authenticate = (profile_id: number, session_id: string, timing_sequence: TimingSequence,
+  model_type: 'baseline' | 'siamese' = 'baseline') =>
   apiRequest<AuthenticationResult>('/authenticate', {
     method: 'POST',
     body: JSON.stringify({
       profile_id,
+      model_type,
       sample: { consent_acknowledged: true, session_id, challenge_version: CHALLENGE_VERSION,
         feature_version: FEATURE_VERSION, timing_sequence },
     }),

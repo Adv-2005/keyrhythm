@@ -68,6 +68,19 @@ class BaselineArtifact(Base):
     profile: Mapped[Profile] = relationship(back_populates="baseline_artifact")
 
 
+class SiameseArtifact(Base):
+    __tablename__ = "siamese_artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    model_version: Mapped[str] = mapped_column(String(48), nullable=False)
+    dataset_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    checkpoint_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
 default_path = Path(__file__).resolve().parents[1] / "data" / "keyrhythm.sqlite3"
 database_url = os.environ.get(
     "KEYRHYTHM_DATABASE_URL", f"sqlite:///{default_path.as_posix()}"

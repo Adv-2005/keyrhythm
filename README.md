@@ -2,7 +2,7 @@
 
 KeyRhythm is a local research application for studying continuous user verification from keystroke timing. The [product requirements](plan.md) and [implementation plan](docs/implementation-plan.md) define the milestone scope.
 
-**Current status: Milestone 3.** Profiles, consented typing capture, local SQLite storage, baseline training, and experimental verification are available. The Siamese model and final held-out evaluation are planned for later milestones.
+**Current status: Milestone 4.** Profiles, consented typing capture, local SQLite storage, baseline verification, and Siamese training and inference are available. Final held-out model comparison is planned for Milestone 5.
 
 ## Requirements
 
@@ -17,10 +17,11 @@ From the repository root in PowerShell:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.lock
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements-ml.txt
 npm.cmd --prefix frontend ci
 ```
 
-The lockfiles capture the tested API and frontend dependency set. `backend/requirements.txt` and `backend/requirements-dev.txt` contain broader ranges for future updates. The baseline uses the existing API dependencies and Python's standard library; the larger packages in `backend/requirements-ml.txt` are for the neural model and later evaluation. In PowerShell on this machine, `npm.cmd` works where the `npm.ps1` shim is blocked by execution policy.
+The lockfiles capture the tested API and frontend dependency set. `backend/requirements.txt` and `backend/requirements-dev.txt` contain broader ranges for future updates. The baseline uses the API dependencies and Python's standard library. `backend/requirements-ml.txt` adds PyTorch for Milestone 4 and declares the analysis packages for Milestone 5. Neural runs record the installed PyTorch version with their configuration. In PowerShell on this machine, `npm.cmd` works where the `npm.ps1` shim is blocked by execution policy.
 
 ## Run locally
 
@@ -61,7 +62,7 @@ Push-Location backend
 Pop-Location
 ```
 
-The frontend build includes TypeScript checking. Tests cover profile and sample lifecycle, invalid timing data, text privacy, browser capture and consent, training and validation splits, normalization, baseline decisions, model staleness, and the live result display.
+The frontend build includes TypeScript checking. Tests cover profile and sample lifecycle, invalid timing data, text privacy, browser capture and consent, recording splits, pair labels, shared encoder shapes, repeatable neural training, checkpoint loading, model staleness, and live result display. Neural tests are skipped if PyTorch is not installed.
 
 ## Layout and data policy
 
@@ -69,11 +70,14 @@ The frontend build includes TypeScript checking. Tests cover profile and sample 
 frontend/src/                 Dashboard, enrolment, verification, shared capture, API client
 frontend/vite.config.ts       React, Tailwind, tests, and local API proxy
 frontend/package-lock.json    Tested npm dependency graph
-backend/app/main.py           FastAPI health, profile, sample, and baseline routes
+backend/app/main.py           FastAPI health, profile, sample, and model routes
 backend/app/schemas.py        Versioned timing validation and API models
 backend/app/database.py       SQLite profile and sample models
 backend/app/baseline.py       Feature extraction, robust scaling, calibration, inference
 backend/app/baseline_service.py SQLite snapshot and dataset fingerprint
+backend/app/siamese.py        Shared CNN, pair construction, training, calibration, inference
+backend/app/siamese_service.py Checkpoint storage and loading
+frontend/src/ModelLaboratory.tsx Neural training controls and validation history
 backend/tests/                Backend tests
 backend/requirements-dev.lock Tested Python API/test dependencies
 docs/implementation-plan.md   Milestone gates and research risks
@@ -98,3 +102,13 @@ Collect at least **six valid samples for each of two profiles**, then open **Aut
 For each eligible profile, validation reserves at least two original recordings. It separates entire collection sessions when enough training and validation recordings remain, and otherwise splits by recording ID. The threshold minimizes the average of false acceptance and false rejection on genuine and other-profile **validation** recordings; ties favor fewer false acceptances. A sample is accepted only when its similarity is strictly greater than the threshold. The API returns validation calibration rates and counts as preliminary diagnostics. These rates are not a held-out performance estimate. Milestone 5 will define and run the final test protocol. Keep future test recordings separate before fitting any scaler, prototype, or threshold.
 
 The baseline API endpoints are `POST /api/v1/models/train`, `GET /api/v1/models/status`, and `POST /api/v1/authenticate`. The UI calls them directly. Training returns a conflict response until the minimum data requirement is met. Authentication returns a similarity score, threshold, decision, model version, and calibration context; it returns a conflict response when enrollment has changed since training.
+
+## Siamese training and verification
+
+Collect at least **10 valid recordings from each of three consenting profiles** before neural training. This is a functional software minimum, not evidence of reliable biometric accuracy. There is no collected participant dataset in this repository. The Model laboratory shows eligibility, accepts an epoch count and embedding size, and starts a synchronous local CPU run. The request remains busy until training and checkpoint saving finish. A failed run returns an error and does not replace the previous checkpoint.
+
+The `siamese-cnn-v1` encoder uses two shared one-dimensional convolution layers, temporal pooling, and a configurable embedding projection (32 dimensions by default). Training uses balanced positive and negative recording pairs with contrastive loss. Both models use the same 44 × 3 `baseline-features-v1` timing matrix. A robust scaler is fitted on neural training recordings only; normalized inputs are clipped to [-10, 10] in both training and inference. Embeddings have unit length. The stored profile reference is the normalized mean of its training embeddings. Euclidean embedding distance is converted to similarity as `1 / (1 + distance)`. This score is not a probability.
+
+Each eligible profile reserves original recordings for training, validation, and a held-out test partition **before** any scaling or pair construction. When at least three collection sessions have enough recordings, entire sessions are separated; otherwise, the split is by recording ID and the UI reports possible session overlap. Positive and negative pairs are formed within training or validation only. The best checkpoint is chosen by validation pair loss. Profile thresholds minimize balanced validation error using validation genuine and impostor samples. Held-out recordings are neither embedded nor scored during Milestone 4 training; Milestone 5 will use them for the final comparison. The artifact stores sample ID splits, seed, architecture and training settings, loss history, PyTorch version, feature version, and dataset fingerprint. Adding a sample makes the model stale. Deleting any profile removes the global neural checkpoint because its weights may contain information derived from that profile.
+
+The neural endpoints are `POST /api/v1/models/siamese/train` and `GET /api/v1/models/siamese/status`. The training request accepts `epochs`, `batch_size`, `learning_rate`, `embedding_dim`, `margin`, and `seed`; omitted values use documented defaults in the API schema. To verify with the neural model, use Authentication → Siamese CNN or set `model_type: "siamese"` in `POST /api/v1/authenticate`. The response includes the actual embedding similarity, validation threshold, decision, and calibration counts. The status endpoint identifies missing data, an untrained model, a stale artifact, or a ready checkpoint. The laboratory's FAR and FRR are **validation calibration diagnostics**, not held-out performance estimates. More participants and sessions are needed before making research claims about generalization.

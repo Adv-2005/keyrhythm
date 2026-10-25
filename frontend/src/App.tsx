@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getHealth } from './api'
 import Authentication from './Authentication'
 import Enrollment from './Enrollment'
+import ModelLaboratory from './ModelLaboratory'
 
 const sections = [
   { id: 'overview', label: 'Overview', milestone: 1 },
@@ -62,7 +63,7 @@ function App() {
           ))}
         </nav>
         <div className="hidden px-6 pb-7 pt-8 text-xs leading-5 text-slate-500 lg:mt-auto lg:block">
-          Academic research prototype<br />Milestone 3 baseline
+          Academic research prototype<br />Milestone 4 Siamese model
         </div>
       </aside>
 
@@ -82,7 +83,7 @@ function App() {
           </div>
         </header>
 
-        {section === 'overview' ? <Overview onNavigate={setSection} /> : section === 'enrolment' ? <Enrollment /> : section === 'authentication' ? <Authentication /> : (
+        {section === 'overview' ? <Overview onNavigate={setSection} /> : section === 'enrolment' ? <Enrollment /> : section === 'authentication' ? <Authentication /> : section === 'laboratory' ? <ModelLaboratory /> : (
           <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm sm:p-12" aria-labelledby="upcoming-title">
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Milestone {activeSection.milestone}</p>
             <h2 id="upcoming-title" className="text-2xl font-semibold tracking-tight">{activeSection.label} is planned</h2>
@@ -111,7 +112,7 @@ function Overview({ onNavigate }: { onNavigate: (section: SectionId) => void }) 
             <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Project workflow</p>
             <h2 id="workflow-heading" className="text-xl font-semibold tracking-tight">From samples to evidence</h2>
           </div>
-          <span className="text-sm text-slate-500">Baseline available</span>
+          <span className="text-sm text-slate-500">Baseline and Siamese training available</span>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           {[

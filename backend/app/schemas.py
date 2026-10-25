@@ -15,6 +15,9 @@ ENROLLMENT_TARGET = int(os.environ.get("KEYRHYTHM_ENROLLMENT_TARGET", "10"))
 if not 1 <= ENROLLMENT_TARGET <= 1000:
     raise ValueError("KEYRHYTHM_ENROLLMENT_TARGET must be between 1 and 1000")
 PAUSE_THRESHOLD_MS = 750.0
+SIAMESE_MODEL_VERSION = "siamese-cnn-v1"
+SIAMESE_MIN_PROFILES = 3
+SIAMESE_MIN_SAMPLES_PER_PROFILE = 10
 
 
 class StrictModel(BaseModel):
@@ -162,10 +165,12 @@ class ModelStatusResponse(StrictModel):
 class AuthenticationRequest(StrictModel):
     profile_id: int
     sample: SampleCreate
+    model_type: Literal["baseline", "siamese"] = "baseline"
 
 
 class AuthenticationResponse(StrictModel):
     profile_id: int
+    model_type: Literal["baseline", "siamese"]
     similarity_score: float
     decision_threshold: float
     distance: float
@@ -174,3 +179,46 @@ class AuthenticationResponse(StrictModel):
     feature_matrix_version: str
     calibration: CalibrationResponse
     explanation: str
+
+
+class SiameseTrainRequest(StrictModel):
+    epochs: int = Field(default=20, ge=1, le=100)
+    batch_size: int = Field(default=32, ge=4, le=256)
+    learning_rate: float = Field(default=0.001, gt=0, le=0.1, allow_inf_nan=False)
+    embedding_dim: int = Field(default=32, ge=4, le=256)
+    margin: float = Field(default=1.0, gt=0, le=2, allow_inf_nan=False)
+    seed: int = Field(default=42, ge=0, le=2**31 - 1)
+
+
+class LossEpoch(StrictModel):
+    epoch: int
+    train_loss: float
+    validation_loss: float
+
+
+class SiameseProfileResult(StrictModel):
+    profile_id: int
+    training_count: int
+    validation_count: int
+    held_out_count: int
+    session_disjoint: bool
+    calibration: CalibrationResponse
+
+
+class SiameseTrainResponse(StrictModel):
+    model_version: str
+    best_epoch: int
+    history: list[LossEpoch]
+    profiles: list[SiameseProfileResult]
+    skipped_profile_ids: list[int]
+
+
+class SiameseStatusResponse(StrictModel):
+    model_version: str
+    status: Literal["needs_data", "needs_training", "stale", "ready"]
+    minimum_profiles: int
+    minimum_samples_per_profile: int
+    eligible_profile_count: int
+    best_epoch: int | None = None
+    history: list[LossEpoch] = Field(default_factory=list)
+    profiles: list[SiameseProfileResult] = Field(default_factory=list)

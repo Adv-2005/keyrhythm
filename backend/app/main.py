@@ -22,9 +22,20 @@ from app.baseline import (
     score_sample,
 )
 from app.baseline_service import load_snapshot
-from app.database import Base, BaselineArtifact, Profile, TypingSample, engine, get_db
+from app.database import (
+    Base,
+    BaselineArtifact,
+    Profile,
+    SiameseArtifact,
+    TypingSample,
+    engine,
+    get_db,
+)
 from app.schemas import (
     ENROLLMENT_TARGET,
+    SIAMESE_MIN_PROFILES,
+    SIAMESE_MIN_SAMPLES_PER_PROFILE,
+    SIAMESE_MODEL_VERSION,
     AuthenticationRequest,
     AuthenticationResponse,
     CalibrationResponse,
@@ -36,9 +47,14 @@ from app.schemas import (
     SampleMetadata,
     SampleResponse,
     SamplesResponse,
+    SiameseProfileResult,
+    SiameseStatusResponse,
+    SiameseTrainRequest,
+    SiameseTrainResponse,
     TrainedProfileResponse,
     TrainResponse,
 )
+from app.siamese_service import checkpoint_path, remove_checkpoint
 
 
 class HealthResponse(BaseModel):
@@ -51,7 +67,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="KeyRhythm API", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="KeyRhythm API", version="0.4.0", lifespan=lifespan)
 DbSession = Annotated[Session, Depends(get_db)]
 
 
@@ -117,6 +133,18 @@ def create_profile(payload: ProfileCreate, db: DbSession) -> ProfileResponse:
 @app.delete("/api/v1/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_profile(profile_id: int, db: DbSession) -> None:
     profile = existing_profile(profile_id, db)
+    neural_artifact = db.get(SiameseArtifact, 1)
+    checkpoint_name = neural_artifact.checkpoint_name if neural_artifact else None
+    if checkpoint_name:
+        try:
+            remove_checkpoint(checkpoint_name)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Could not remove the neural checkpoint; profile was not deleted",
+            ) from exc
+    if neural_artifact:
+        db.delete(neural_artifact)
     db.delete(profile)
     db.commit()
 
@@ -291,11 +319,161 @@ def model_status(db: DbSession) -> ModelStatusResponse:
     )
 
 
+def neural_profile_result(profile_id: int, state: dict) -> SiameseProfileResult:
+    split = state["splits"][str(profile_id)]
+    profile = state["profiles"][str(profile_id)]
+    return SiameseProfileResult(
+        profile_id=profile_id,
+        training_count=len(split["train_ids"]),
+        validation_count=len(split["validation_ids"]),
+        held_out_count=len(split["test_ids"]),
+        session_disjoint=split["session_disjoint"],
+        calibration=CalibrationResponse(
+            **profile["calibration"], session_disjoint=split["session_disjoint"]
+        ),
+    )
+
+
+@app.post("/api/v1/models/siamese/train", response_model=SiameseTrainResponse)
+def train_siamese(payload: SiameseTrainRequest, db: DbSession) -> SiameseTrainResponse:
+    recordings, fingerprint = current_snapshot(db)
+    try:
+        from app.siamese import TrainingConfig, TrainingError, train
+        from app.siamese_service import CheckpointCleanupError, save_training
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503, detail="Install backend/requirements-ml.txt for neural training"
+        ) from exc
+    try:
+        result = train(recordings, TrainingConfig(**payload.model_dump()))
+    except InsufficientDataError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (TrainingError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail=f"Neural training failed; no model was saved: {exc}"
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail="Neural training failed; no new model was saved"
+        ) from exc
+    try:
+        save_training(db, result, fingerprint)
+    except CheckpointCleanupError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail="Checkpoint saving failed; no new model was saved"
+        ) from exc
+    state = result.metadata()
+    all_profile_ids = set(db.scalars(select(Profile.id)))
+    return SiameseTrainResponse(
+        model_version=SIAMESE_MODEL_VERSION,
+        best_epoch=result.best_epoch,
+        history=result.history,
+        profiles=[
+            neural_profile_result(profile_id, state)
+            for profile_id in sorted(result.profiles)
+        ],
+        skipped_profile_ids=sorted(all_profile_ids - result.profiles.keys()),
+    )
+
+
+@app.get("/api/v1/models/siamese/status", response_model=SiameseStatusResponse)
+def siamese_status(db: DbSession) -> SiameseStatusResponse:
+    recordings, fingerprint = current_snapshot(db)
+    counts: dict[int, int] = {}
+    for item in recordings:
+        counts[item.profile_id] = counts.get(item.profile_id, 0) + 1
+    eligible = sum(
+        count >= SIAMESE_MIN_SAMPLES_PER_PROFILE for count in counts.values()
+    )
+    basic = {
+        "model_version": SIAMESE_MODEL_VERSION,
+        "minimum_profiles": SIAMESE_MIN_PROFILES,
+        "minimum_samples_per_profile": SIAMESE_MIN_SAMPLES_PER_PROFILE,
+        "eligible_profile_count": eligible,
+    }
+    artifact = db.get(SiameseArtifact, 1)
+    if artifact is None:
+        status_name = (
+            "needs_training" if eligible >= SIAMESE_MIN_PROFILES else "needs_data"
+        )
+        return SiameseStatusResponse(**basic, status=status_name)
+    if (
+        artifact.model_version != SIAMESE_MODEL_VERSION
+        or artifact.dataset_fingerprint != fingerprint
+    ):
+        return SiameseStatusResponse(**basic, status="stale")
+    try:
+        state = artifact.state
+        if state["model_version"] != SIAMESE_MODEL_VERSION:
+            raise ValueError("Unsupported model state")
+        if not checkpoint_path(artifact.checkpoint_name).is_file():
+            raise ValueError("Checkpoint missing")
+        profiles = [
+            neural_profile_result(int(profile_id), state)
+            for profile_id in sorted(state["profiles"], key=int)
+        ]
+        return SiameseStatusResponse(
+            **basic,
+            status="ready",
+            best_epoch=state["best_epoch"],
+            history=state["history"],
+            profiles=profiles,
+        )
+    except (KeyError, TypeError, ValueError):
+        return SiameseStatusResponse(**basic, status="stale")
+
+
 @app.post("/api/v1/authenticate", response_model=AuthenticationResponse)
 def authenticate(
     payload: AuthenticationRequest, db: DbSession
 ) -> AuthenticationResponse:
     existing_profile(payload.profile_id, db)
+    if payload.model_type == "siamese":
+        artifact = db.get(SiameseArtifact, 1)
+        if artifact is None:
+            raise HTTPException(status_code=409, detail="Train the Siamese model before verification")
+        _, fingerprint = current_snapshot(db)
+        if artifact.dataset_fingerprint != fingerprint:
+            raise HTTPException(status_code=409, detail="Enrollment data changed; retrain the Siamese model")
+        if str(payload.profile_id) not in artifact.state.get("profiles", {}):
+            raise HTTPException(status_code=409, detail="Selected profile was not included in neural training")
+        try:
+            from app.siamese import score_sample as score_neural
+            from app.siamese_service import load_trained
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=503, detail="Install backend/requirements-ml.txt for neural inference"
+            ) from exc
+        try:
+            network, scaler, profile = load_trained(artifact, fingerprint, payload.profile_id)
+            score, distance, threshold, accepted = score_neural(
+                network, scaler, profile, payload.sample.timing_sequence
+            )
+        except (KeyError, TypeError, ValueError, RuntimeError, OSError) as exc:
+            raise HTTPException(
+                status_code=409, detail="Stored Siamese model is invalid; retrain it"
+            ) from exc
+        return AuthenticationResponse(
+            profile_id=payload.profile_id,
+            model_type="siamese",
+            similarity_score=score,
+            decision_threshold=threshold,
+            distance=distance,
+            accepted=accepted,
+            model_version=SIAMESE_MODEL_VERSION,
+            feature_matrix_version=FEATURE_MATRIX_VERSION,
+            calibration=CalibrationResponse(
+                **profile.rates.__dict__,
+                session_disjoint=artifact.state["splits"][str(payload.profile_id)]["session_disjoint"],
+            ),
+            explanation=(
+                "Neural embedding is within the validation-calibrated profile threshold."
+                if accepted else
+                "Neural embedding exceeds the validation-calibrated profile threshold."
+            ),
+        )
     artifact = db.get(BaselineArtifact, payload.profile_id)
     if artifact is None:
         raise HTTPException(
@@ -319,6 +497,7 @@ def authenticate(
     threshold = 1 / (1 + model.threshold_distance)
     return AuthenticationResponse(
         profile_id=payload.profile_id,
+        model_type="baseline",
         similarity_score=score,
         decision_threshold=threshold,
         distance=distance,

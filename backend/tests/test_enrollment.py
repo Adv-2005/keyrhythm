@@ -27,6 +27,7 @@ def test_startup_creates_sqlite_tables(
             assert set(inspect(engine).get_table_names()) == {
                 "baseline_artifacts",
                 "profiles",
+                "siamese_artifacts",
                 "typing_samples",
             }
 

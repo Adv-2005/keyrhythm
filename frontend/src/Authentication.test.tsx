@@ -24,6 +24,12 @@ it('trains the baseline and displays the returned verification decision', async 
           validation_count: trained ? 2 : null, calibration: null })),
       }) }
     }
+    if (url.endsWith('/models/siamese/status')) {
+      return { ok: true, status: 200, json: async () => ({
+        model_version: 'siamese-cnn-v1', status: 'needs_training', minimum_profiles: 3,
+        minimum_samples_per_profile: 10, eligible_profile_count: 2, profiles: [], history: [], best_epoch: null,
+      }) }
+    }
     if (url.endsWith('/models/train')) {
       trained = true
       return { ok: true, status: 200, json: async () => ({ model_version: 'baseline-distance-v1' }) }
@@ -31,7 +37,7 @@ it('trains the baseline and displays the returned verification decision', async 
     if (url.endsWith('/authenticate')) {
       authenticationBody = init?.body as string
       return { ok: true, status: 200, json: async () => ({
-        profile_id: 1, similarity_score: 0.872, decision_threshold: 0.7,
+        profile_id: 1, model_type: 'baseline', similarity_score: 0.872, decision_threshold: 0.7,
         distance: 0.1468, accepted: true, model_version: 'baseline-distance-v1',
         feature_matrix_version: 'baseline-features-v1',
         calibration: { false_acceptance_rate: 0, false_rejection_rate: 0,

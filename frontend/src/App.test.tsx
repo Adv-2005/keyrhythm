@@ -39,6 +39,6 @@ describe('dashboard foundation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Authentication' }))
     expect(screen.getByRole('heading', { name: 'Verify typing rhythm' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Model laboratory' }))
-    expect(screen.getByRole('heading', { name: 'Model laboratory is planned' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Siamese CNN' })).toBeTruthy()
   })
 })
