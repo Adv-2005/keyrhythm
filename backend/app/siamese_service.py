@@ -17,7 +17,12 @@ from app.schemas import SIAMESE_MODEL_VERSION
 if TYPE_CHECKING:
     from app.siamese import ProfileCalibration, SiameseNetwork, TrainingResult
 
-ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "artifacts"
+ARTIFACT_DIR = Path(
+    os.environ.get(
+        "KEYRHYTHM_ARTIFACT_DIR",
+        str(Path(__file__).resolve().parents[1] / "artifacts"),
+    )
+).resolve()
 
 
 class CheckpointCleanupError(RuntimeError):

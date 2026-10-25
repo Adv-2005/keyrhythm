@@ -17,6 +17,11 @@ const sections = [
 type SectionId = (typeof sections)[number]['id']
 type ConnectionStatus = 'checking' | 'connected' | 'unavailable'
 
+function sectionFromHash(): SectionId {
+  const value = window.location.hash.slice(1)
+  return sections.find((item) => item.id === value)?.id ?? 'overview'
+}
+
 const connectionLabels: Record<ConnectionStatus, string> = {
   checking: 'Checking API…',
   connected: 'API connected',
@@ -24,8 +29,19 @@ const connectionLabels: Record<ConnectionStatus, string> = {
 }
 
 function App() {
-  const [section, setSection] = useState<SectionId>('overview')
+  const [section, setSection] = useState<SectionId>(sectionFromHash)
   const [connection, setConnection] = useState<ConnectionStatus>('checking')
+
+  useEffect(() => {
+    const onHashChange = () => setSection(sectionFromHash())
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  function navigate(next: SectionId) {
+    window.location.hash = next
+    setSection(next)
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -58,7 +74,7 @@ function App() {
               key={item.id}
               type="button"
               aria-current={section === item.id ? 'page' : undefined}
-              onClick={() => setSection(item.id)}
+              onClick={() => navigate(item.id)}
               className={`shrink-0 rounded-lg px-4 py-2.5 text-left text-sm font-medium transition-colors lg:w-full ${section === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
             >
               {item.label}
@@ -66,7 +82,7 @@ function App() {
           ))}
         </nav>
         <div className="hidden px-6 pb-7 pt-8 text-xs leading-5 text-slate-500 lg:mt-auto lg:block">
-          Academic research prototype<br />Milestone 6 dashboard
+          Academic research prototype<br />Milestone 7 dashboard
         </div>
       </aside>
 
@@ -86,7 +102,7 @@ function App() {
           </div>
         </header>
 
-        {section === 'overview' ? <Overview onNavigate={setSection} /> : section === 'enrolment' ? <Enrollment /> : section === 'authentication' ? <Authentication /> : section === 'laboratory' ? <ModelLaboratory onNavigate={setSection} /> : <Evaluation />}
+        {section === 'overview' ? <Overview onNavigate={navigate} /> : section === 'enrolment' ? <Enrollment /> : section === 'authentication' ? <Authentication /> : section === 'laboratory' ? <ModelLaboratory onNavigate={navigate} /> : <Evaluation />}
       </main>
     </div>
   )

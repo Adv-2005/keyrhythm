@@ -2,7 +2,7 @@
 
 KeyRhythm is a local research application for studying continuous user verification from keystroke timing. The [product requirements](plan.md) and [implementation plan](docs/implementation-plan.md) define the milestone scope.
 
-**Current status: Milestone 6.** The dashboard connects profiles, consented typing capture, baseline and Siamese verification, training state, verification trial summaries, and saved held-out model comparisons. Final academic testing and deliverables remain for Milestone 7.
+**Current status: Milestone 7 software and documentation complete; participant results pending.** The dashboard connects profiles, consented typing capture, baseline and Siamese verification, training state, verification trial summaries, and saved held-out model comparisons. The [final report](docs/final-report.md) leaves empirical results blank until a consented participant dataset exists. The [synthetic walkthrough](docs/demo.md) checks the software path without making a biometric performance claim.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ Start the frontend in another terminal from the repository root:
 npm.cmd --prefix frontend run dev
 ```
 
-Open `http://127.0.0.1:5173`. The status badge requests `/api/v1/health` through Vite's local proxy, which forwards to FastAPI at `http://127.0.0.1:8000`. `frontend/.env.example` documents the default browser API path; copying it to `.env` is optional. The backend creates `backend/data/keyrhythm.sqlite3` by default. To change the path or sample target, set `KEYRHYTHM_DATABASE_URL` and `KEYRHYTHM_ENROLLMENT_TARGET` in the backend process environment before starting Uvicorn. The values in `backend/.env.example` are examples and are not loaded automatically.
+Open `http://127.0.0.1:5173`. Sections can be opened directly with `#overview`, `#enrolment`, `#authentication`, `#laboratory`, and `#evaluation`. The status badge requests `/api/v1/health` through Vite's local proxy, which forwards to FastAPI at `http://127.0.0.1:8000`. `frontend/.env.example` documents the default browser API path; copying it to `.env` is optional. The backend creates `backend/data/keyrhythm.sqlite3` by default. To change the database, sample target, or neural checkpoint directory, set `KEYRHYTHM_DATABASE_URL`, `KEYRHYTHM_ENROLLMENT_TARGET`, or `KEYRHYTHM_ARTIFACT_DIR` in the backend process environment before starting Uvicorn. The values in `backend/.env.example` are examples and are not loaded automatically. Keep the database and checkpoint directory together when reproducing a saved run.
 
 To check both servers:
 
@@ -62,7 +62,9 @@ Push-Location backend
 Pop-Location
 ```
 
-The frontend build includes TypeScript checking. Tests cover profile and sample lifecycle, invalid timing data, text privacy, browser capture and consent, recording splits, pair labels, shared encoder shapes, repeatable neural training, checkpoint loading, model staleness, held-out trial parity, metric denominators, trial summary retention, and live dashboard values. Neural and evaluation tests are skipped if PyTorch is not installed.
+The frontend build includes TypeScript checking. Tests cover profile and sample lifecycle, invalid timing data, text privacy, browser capture and consent, recording splits, pair labels, shared encoder shapes, preprocessing parity, repeatable neural training and checkpoint weights, checkpoint loading, model staleness, held-out trial parity, metric denominators, trial summary retention, and live dashboard values. Neural and evaluation tests are skipped if PyTorch is not installed.
+
+The [architecture and neural computation](docs/architecture.md), [demonstration script and screenshots](docs/demo.md), and [final report draft](docs/final-report.md) are the Milestone 7 deliverables. To exercise the full path without participant data, run `python -m app.demo_cli` as described in the demonstration; generated records remain under ignored `backend/data/`. To export tables and SVG/PNG figures from a saved **real** experiment, run `python -m app.report_cli --experiment-id <ID> --output data\report-<ID>` from `backend/` with the correct database environment variable. The output directory must be empty. The exporter reads saved results only; it does not retrain or reuse the held-out partition.
 
 ## Layout and data policy
 
@@ -84,9 +86,14 @@ backend/app/evaluation.py     Split audit, held-out trials, metrics, reference-c
 backend/app/evaluation_service.py Saved experiment lifecycle and code revision
 backend/app/evaluation_plots.py SVG plots from saved results
 backend/app/evaluate_cli.py   Repeatable local experiment command
+backend/app/demo_cli.py       Isolated synthetic software walkthrough
+backend/app/report_cli.py     Saved-run aggregate tables and figures
 backend/tests/                Backend tests
 backend/requirements-dev.lock Tested Python API/test dependencies
 docs/implementation-plan.md   Milestone gates and research risks
+docs/architecture.md          Data flow and neural computation
+docs/final-report.md          Participant results pending
+docs/demo.md                  Walkthrough and synthetic screenshots
 ```
 
 The initial version is an academic prototype, not an identity-security product. Timing capture runs only in the designated challenge field after consent. Raw keyboard events and entered challenge text stay transient in the browser; only numeric timing sequences and pseudonymous profile labels are sent. Successful verification stores a summary with profile ID, score, threshold, decision, model version, and timestamp, never the fresh timing sequence. The Authentication page shows the 20 most recent summaries; `GET /api/v1/trials` accepts a `limit` from 1 to 100. Deleting a profile removes its trial summaries. Local databases, generated model artifacts, and environment files are excluded by `.gitignore`.

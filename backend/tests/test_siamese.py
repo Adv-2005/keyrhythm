@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 torch = pytest.importorskip("torch")
 
-from app.baseline import Recording
+from app.baseline import Recording, extract_features, normalize
 from app.database import Base, SiameseArtifact, get_db
 from app.main import app
 from app.schemas import CHALLENGE_LENGTH, TimingSequence
@@ -23,6 +23,7 @@ from app.siamese import (
     make_pairs,
     prepare_splits,
     score_sample,
+    tensor_for,
     train,
 )
 from app.siamese_service import load_trained, save_training
@@ -116,6 +117,15 @@ def test_training_checkpoint_and_inference(
     assert result.history == repeated.history
     assert result.scaler == repeated.scaler
     assert result.profiles == repeated.profiles
+    assert all(
+        torch.equal(weights, repeated.state_dict[name])
+        for name, weights in result.state_dict.items()
+    )
+    original = items[0].timing_sequence
+    expected = torch.tensor(
+        normalize(extract_features(original), result.scaler), dtype=torch.float32
+    ).clamp(-10, 10).T.contiguous()
+    assert torch.equal(tensor_for(original, result.scaler), expected)
     engine = create_engine(f"sqlite:///{(tmp_path / 'model.sqlite3').as_posix()}")
     Base.metadata.create_all(engine)
     with Session(engine) as db:

@@ -13,7 +13,15 @@ from sqlalchemy.orm import Session, sessionmaker
 torch = pytest.importorskip("torch")
 
 from app.baseline_service import load_snapshot
-from app.database import Base, Profile, SiameseArtifact, TypingSample, get_db
+from app.database import (
+    Base,
+    Experiment,
+    Profile,
+    SiameseArtifact,
+    TypingSample,
+    VerificationTrial,
+    get_db,
+)
 from app.evaluation import Trial, restore_splits, summarize_trials
 from app.main import app
 from app.schemas import CHALLENGE_LENGTH, TimingSequence
@@ -149,6 +157,21 @@ def test_same_test_trials_saved_plots_staleness_and_deletion(
         assert "Held-out confusion matrices" in matrix.text
         assert "timing_sequence" not in roc.text + matrix.text
 
+        verification = await client.post("/api/v1/authenticate", json={
+            "profile_id": 1,
+            "model_type": "siamese",
+            "sample": {
+                "consent_acknowledged": True,
+                "session_id": "747a3880-e54c-4d99-a010-d9ab67999a49",
+                "challenge_version": "fixed-1",
+                "feature_version": "timing-1",
+                "timing_sequence": sequence(161, 126).model_dump(),
+            },
+        })
+        assert verification.status_code == 200, verification.text
+        with factory() as db:
+            assert db.scalar(select(VerificationTrial).where(VerificationTrial.profile_id == 1))
+
         with factory() as db:
             first_sample = db.scalar(select(TypingSample).order_by(TypingSample.id))
             assert first_sample is not None
@@ -160,5 +183,12 @@ def test_same_test_trials_saved_plots_staleness_and_deletion(
         assert (await client.delete("/api/v1/profiles/1")).status_code == 204
         assert not (artifact_dir / checkpoint_name).exists()
         assert (await client.get("/api/v1/experiments")).json() == []
+        with factory() as db:
+            assert db.get(Profile, 1) is None
+            assert db.scalars(select(TypingSample).where(TypingSample.profile_id == 1)).all() == []
+            assert db.scalars(select(VerificationTrial)).all() == []
+            assert db.scalars(select(Experiment)).all() == []
+            assert db.get(SiameseArtifact, 1) is None
+            assert db.scalar(select(TypingSample).where(TypingSample.profile_id == 2))
 
     asyncio.run(run())
