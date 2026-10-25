@@ -222,3 +222,112 @@ class SiameseStatusResponse(StrictModel):
     best_epoch: int | None = None
     history: list[LossEpoch] = Field(default_factory=list)
     profiles: list[SiameseProfileResult] = Field(default_factory=list)
+
+
+class SplitManifest(StrictModel):
+    train_ids: list[int]
+    validation_ids: list[int]
+    test_ids: list[int]
+    session_disjoint: bool
+
+
+class EvaluationMetrics(StrictModel):
+    genuine_count: int
+    impostor_count: int
+    true_positive: int
+    false_negative: int
+    false_positive: int
+    true_negative: int
+    false_acceptance_rate: float
+    false_rejection_rate: float
+    precision: float | None
+    recall: float
+    roc_auc: float | None
+    equal_error_rate: float | None
+    auc_eer_supported: bool
+
+
+class RocPoint(StrictModel):
+    decision_margin_threshold: float
+    false_positive_rate: float
+    true_positive_rate: float
+
+
+class TrialResult(StrictModel):
+    claimed_profile_id: int
+    recording_id: int
+    genuine: bool
+    similarity_score: float
+    decision_threshold: float
+    decision_margin: float
+    accepted: bool
+
+
+class EvaluationCalibration(StrictModel):
+    false_acceptance_rate: float
+    false_rejection_rate: float
+    genuine_count: int
+    impostor_count: int
+    session_disjoint: bool
+    training_count: int
+    validation_count: int
+
+
+class ModelEvaluation(StrictModel):
+    metrics: EvaluationMetrics
+    roc: list[RocPoint]
+    thresholds: dict[str, float]
+    validation_calibration: dict[str, EvaluationCalibration]
+    trials: list[TrialResult]
+
+
+class ReferenceCountEffect(StrictModel):
+    reference_count: int
+    baseline: EvaluationMetrics
+    siamese: EvaluationMetrics
+
+
+class CodeRevision(StrictModel):
+    commit: str | None
+    working_tree_dirty: bool | None
+
+
+class ExperimentResult(StrictModel):
+    protocol_version: str
+    dataset_fingerprint: str
+    challenge_version: str
+    timing_feature_version: str
+    feature_matrix_version: str
+    model_versions: dict[str, str]
+    training_configuration: SiameseTrainRequest
+    training_history: list[LossEpoch]
+    best_epoch: int
+    torch_version: str
+    split_configuration: dict[str, SplitManifest]
+    profile_count: int
+    sample_count: int
+    test_recording_count: int
+    trial_count_per_model: int
+    models: dict[str, ModelEvaluation]
+    reference_count_effect: list[ReferenceCountEffect]
+    limitations: list[str]
+    neural_checkpoint_name: str
+    evaluation_code_fingerprint: str
+    code_revision: CodeRevision
+
+
+class ExperimentResponse(StrictModel):
+    id: int
+    created_at: datetime
+    result: ExperimentResult
+
+
+class ExperimentSummary(StrictModel):
+    id: int
+    created_at: datetime
+    dataset_fingerprint: str
+    protocol_version: str
+    profile_count: int
+    test_recording_count: int
+    baseline: EvaluationMetrics
+    siamese: EvaluationMetrics

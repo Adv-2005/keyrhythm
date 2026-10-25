@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from app.baseline import (
     FEATURE_MATRIX_VERSION,
@@ -25,6 +25,7 @@ from app.baseline_service import load_snapshot
 from app.database import (
     Base,
     BaselineArtifact,
+    Experiment,
     Profile,
     SiameseArtifact,
     TypingSample,
@@ -39,6 +40,8 @@ from app.schemas import (
     AuthenticationRequest,
     AuthenticationResponse,
     CalibrationResponse,
+    ExperimentResponse,
+    ExperimentSummary,
     ModelProfileStatus,
     ModelStatusResponse,
     ProfileCreate,
@@ -67,7 +70,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="KeyRhythm API", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="KeyRhythm API", version="0.5.0", lifespan=lifespan)
 DbSession = Annotated[Session, Depends(get_db)]
 
 
@@ -145,6 +148,7 @@ def delete_profile(profile_id: int, db: DbSession) -> None:
             ) from exc
     if neural_artifact:
         db.delete(neural_artifact)
+    db.execute(delete(Experiment))
     db.delete(profile)
     db.commit()
 
@@ -423,6 +427,76 @@ def siamese_status(db: DbSession) -> SiameseStatusResponse:
         )
     except (KeyError, TypeError, ValueError):
         return SiameseStatusResponse(**basic, status="stale")
+
+
+def experiment_response(experiment: Experiment) -> ExperimentResponse:
+    return ExperimentResponse(
+        id=experiment.id,
+        created_at=experiment.created_at,
+        result=experiment.state,
+    )
+
+
+def existing_experiment(experiment_id: int, db: Session) -> Experiment:
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return experiment
+
+
+@app.post("/api/v1/experiments/evaluate", response_model=ExperimentResponse)
+def evaluate_experiment(db: DbSession) -> ExperimentResponse:
+    try:
+        from app.evaluation_service import run_evaluation
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503, detail="Install backend/requirements-ml.txt for evaluation"
+        ) from exc
+    try:
+        experiment = run_evaluation(db)
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=f"Evaluation unavailable: {exc}") from exc
+    return experiment_response(experiment)
+
+
+@app.get("/api/v1/experiments", response_model=list[ExperimentSummary])
+def list_experiments(db: DbSession) -> list[ExperimentSummary]:
+    return [
+        ExperimentSummary(
+            id=item.id,
+            created_at=item.created_at,
+            dataset_fingerprint=item.dataset_fingerprint,
+            protocol_version=item.protocol_version,
+            profile_count=item.state["profile_count"],
+            test_recording_count=item.state["test_recording_count"],
+            baseline=item.state["models"]["baseline"]["metrics"],
+            siamese=item.state["models"]["siamese"]["metrics"],
+        )
+        for item in db.scalars(select(Experiment).order_by(Experiment.id.desc()))
+    ]
+
+
+@app.get("/api/v1/experiments/{experiment_id}", response_model=ExperimentResponse)
+def get_experiment(experiment_id: int, db: DbSession) -> ExperimentResponse:
+    return experiment_response(existing_experiment(experiment_id, db))
+
+
+@app.get("/api/v1/experiments/{experiment_id}/plots/{plot_name}.svg")
+def experiment_plot(experiment_id: int, plot_name: str, db: DbSession) -> Response:
+    from app.evaluation_plots import confusion_svg, roc_svg
+
+    experiment = existing_experiment(experiment_id, db)
+    if plot_name == "roc":
+        svg = roc_svg(experiment.state)
+    elif plot_name == "confusion":
+        svg = confusion_svg(experiment.state)
+    else:
+        raise HTTPException(status_code=404, detail="Plot not found")
+    return Response(
+        content=svg,
+        media_type="image/svg+xml",
+        headers={"Content-Disposition": f'inline; filename="keyrhythm-{plot_name}-{experiment_id}.svg"'},
+    )
 
 
 @app.post("/api/v1/authenticate", response_model=AuthenticationResponse)

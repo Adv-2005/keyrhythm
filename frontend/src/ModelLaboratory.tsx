@@ -22,7 +22,7 @@ export default function ModelLaboratory() {
     try {
       await trainSiamese({ epochs, batch_size: 32, learning_rate: 0.001, embedding_dim: embeddingDim, margin: 1, seed: 42 })
       setStatus(await getSiameseStatus())
-      setMessage('Training complete. Validation results are preliminary; held-out evaluation is planned for Milestone 5.')
+      setMessage('Training complete. Validation results are preliminary; run the held-out comparison in Evaluation.')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Neural training failed; no new model was saved.')
     } finally { setBusy(false) }

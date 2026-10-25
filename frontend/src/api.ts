@@ -128,3 +128,54 @@ export const authenticate = (profile_id: number, session_id: string, timing_sequ
         feature_version: FEATURE_VERSION, timing_sequence },
     }),
   })
+
+export type EvaluationMetrics = {
+  genuine_count: number
+  impostor_count: number
+  true_positive: number
+  false_negative: number
+  false_positive: number
+  true_negative: number
+  false_acceptance_rate: number
+  false_rejection_rate: number
+  precision: number | null
+  recall: number
+  roc_auc: number | null
+  equal_error_rate: number | null
+  auc_eer_supported: boolean
+}
+
+export type ExperimentSummary = {
+  id: number
+  created_at: string
+  dataset_fingerprint: string
+  protocol_version: string
+  profile_count: number
+  test_recording_count: number
+  baseline: EvaluationMetrics
+  siamese: EvaluationMetrics
+}
+
+export type Experiment = {
+  id: number
+  created_at: string
+  result: {
+    protocol_version: string
+    dataset_fingerprint: string
+    profile_count: number
+    sample_count: number
+    test_recording_count: number
+    trial_count_per_model: number
+    model_versions: Record<string, string>
+    split_configuration: Record<string, { train_ids: number[]; validation_ids: number[]; test_ids: number[]; session_disjoint: boolean }>
+    models: Record<'baseline' | 'siamese', { metrics: EvaluationMetrics }>
+    reference_count_effect: { reference_count: number; baseline: EvaluationMetrics; siamese: EvaluationMetrics }[]
+    limitations: string[]
+  }
+}
+
+export const listExperiments = (signal?: AbortSignal) => apiRequest<ExperimentSummary[]>('/experiments', { signal })
+export const getExperiment = (id: number, signal?: AbortSignal) => apiRequest<Experiment>(`/experiments/${id}`, { signal })
+export const runEvaluation = () => apiRequest<Experiment>('/experiments/evaluate', { method: 'POST' })
+export const experimentPlotUrl = (id: number, plot: 'roc' | 'confusion') =>
+  `${apiBaseUrl}/experiments/${id}/plots/${plot}.svg`

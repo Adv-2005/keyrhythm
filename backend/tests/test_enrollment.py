@@ -26,6 +26,7 @@ def test_startup_creates_sqlite_tables(
         async with main.app.router.lifespan_context(main.app):
             assert set(inspect(engine).get_table_names()) == {
                 "baseline_artifacts",
+                "experiments",
                 "profiles",
                 "siamese_artifacts",
                 "typing_samples",

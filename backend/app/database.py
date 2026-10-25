@@ -81,6 +81,18 @@ class SiameseArtifact(Base):
     state: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
+class Experiment(Base):
+    __tablename__ = "experiments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    dataset_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    protocol_version: Mapped[str] = mapped_column(String(48), nullable=False)
+    state: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
 default_path = Path(__file__).resolve().parents[1] / "data" / "keyrhythm.sqlite3"
 database_url = os.environ.get(
     "KEYRHYTHM_DATABASE_URL", f"sqlite:///{default_path.as_posix()}"
